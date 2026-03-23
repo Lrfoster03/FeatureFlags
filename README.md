@@ -2,6 +2,8 @@
 
 A simple full-stack feature flag management dashboard built with **Blazor Server**, **EF Core**, and **SQLite**.
 
+![alt text](image.png)
+
 This application allows you to:
 
 * Create and manage feature flags
