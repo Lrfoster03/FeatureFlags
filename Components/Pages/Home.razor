@@ -2,9 +2,10 @@
 @rendermode InteractiveServer
 @using FeatureFlags.Components.Models
 @using FeatureFlags.Components.Shared
+@using FeatureFlags.Data
 @using Microsoft.EntityFrameworkCore
 @using BlazorBootstrap
-@inject FeatureFlags.Data.FeatureFlagDbContext Db
+@inject FeatureFlagDbContext Db
 
 <PageTitle>Feature Flags</PageTitle>
 
@@ -18,7 +19,7 @@
         @foreach (var item in itemList)
         {
             <div style="padding: 0.5rem; border-radius: 0.25rem;">
-                <Pill FeatureFlag="item" OnChanged="SaveFeatureFlag" />
+                <Pill FeatureFlag="item" OnChanged="SaveFeatureFlag" OnDelete="DeleteFeatureFlag" />
             </div>
         }
     </ul>
@@ -27,16 +28,18 @@
 @if (!string.IsNullOrWhiteSpace(errorMessage))
 {
     <div style="position: fixed; bottom: 1rem; right: 1rem; z-index: 2000; min-width: 320px;">
-        <Alert Color="AlertColor.Warning" Dismissable="true">
+        <Alert Color="AlertColor.Danger" Dismissable="true">
             @errorMessage
         </Alert>
     </div>
 }
 
+<ConfirmDialog @ref="confirmDialog" />
+
 @code {
     private List<FeatureFlag> itemList = new();
-
     private string? errorMessage;
+    private ConfirmDialog confirmDialog = default!;
 
     protected override async Task OnInitializedAsync()
     {
@@ -47,6 +50,8 @@
 
     private async Task AddItem()
     {
+        errorMessage = null;
+
         var newItem = new FeatureFlag
         {
             Name = $"Item {itemList.Count + 1}",
@@ -64,12 +69,14 @@
     {
         errorMessage = null;
 
+        featureFlag.Name = featureFlag.Name.Trim();
+
         var duplicateExists = await Db.FeatureFlags
             .AnyAsync(f => f.Name == featureFlag.Name && f.Id != featureFlag.Id);
 
         if (duplicateExists)
         {
-            errorMessage = "A feature flag with that name already exists.";
+            errorMessage = $"A feature flag named '{featureFlag.Name}' already exists.";
             return;
         }
 
@@ -80,7 +87,47 @@
         }
         catch (DbUpdateException)
         {
-            errorMessage = "A feature flag with that name already exists.";
+            errorMessage = $"A feature flag named '{featureFlag.Name}' already exists.";
+        }
+    }
+
+    private async Task DeleteFeatureFlag(FeatureFlag featureFlag)
+    {
+        errorMessage = null;
+
+        var confirmed = await confirmDialog.ShowAsync(
+            title: "Delete Feature Flag",
+            message1: $"Are you sure you want to delete '{featureFlag.Name}'?",
+            message2: "This action cannot be undone.",
+            confirmDialogOptions: new ConfirmDialogOptions
+            {
+                YesButtonText = "Delete",
+                YesButtonColor = ButtonColor.Danger,
+                NoButtonText = "Cancel",
+                NoButtonColor = ButtonColor.Secondary
+            });
+
+        if (confirmed != true)
+            return;
+
+        try
+        {
+            var existing = await Db.FeatureFlags.FindAsync(featureFlag.Id);
+
+            if (existing is null)
+            {
+                errorMessage = $"Feature flag '{featureFlag.Name}' was not found.";
+                return;
+            }
+
+            Db.FeatureFlags.Remove(existing);
+            await Db.SaveChangesAsync();
+
+            itemList.RemoveAll(f => f.Id == featureFlag.Id);
+        }
+        catch (Exception)
+        {
+            errorMessage = $"Failed to delete feature flag '{featureFlag.Name}'.";
         }
     }
 }

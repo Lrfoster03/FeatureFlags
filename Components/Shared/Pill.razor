@@ -36,6 +36,12 @@
                 </div>
             </div>
         </div>
+
+        <div class="d-flex align-items-center justify-content-end mt-3 mb-3 ms-3 me-3" @onclick:stopPropagation="true">
+            <Button Color="ButtonColor.Danger" Size="ButtonSize.Small" class="me-3 mb-3" @onclick="DeleteFeatureFlag">
+                <i class="bi bi-trash"></i> Delete
+            </Button>
+        </div>
     }
 </div>
 
@@ -45,6 +51,9 @@
 
     [Parameter]
     public EventCallback<FeatureFlag> OnChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<FeatureFlag> OnDelete { get; set; }
 
     private bool isExpanded;
 
@@ -76,5 +85,10 @@
     {
         FeatureFlag.Description = e.Value?.ToString() ?? string.Empty;
         await OnChanged.InvokeAsync(FeatureFlag);
+    }
+
+    private async Task DeleteFeatureFlag()
+    {
+        await OnDelete.InvokeAsync(FeatureFlag);
     }
 }
