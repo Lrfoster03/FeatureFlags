@@ -1,0 +1,36 @@
+.feature-pill {
+    display: block;
+    width: 100%;
+    /* max-width: 700px; */
+    text-align: left;
+    border: none;
+    overflow: hidden;
+    padding: 0;
+}
+
+.feature-pill.collapsed {
+    border-radius: 999px !important;
+}
+
+.feature-pill.expanded {
+    border-radius: 2rem !important;
+}
+
+.pill-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem 1.25rem;
+    cursor: pointer;
+}
+
+.pill-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pill-body {
+    padding: 0 1.25rem 1.25rem 1.25rem;
+}

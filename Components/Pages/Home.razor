@@ -1,0 +1,86 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using FeatureFlags.Components.Models
+@using FeatureFlags.Components.Shared
+@using Microsoft.EntityFrameworkCore
+@using BlazorBootstrap
+@inject FeatureFlags.Data.FeatureFlagDbContext Db
+
+<PageTitle>Feature Flags</PageTitle>
+
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
+    <h1 style="margin: 0;">Feature Flags</h1>
+    <button class="btn btn-primary" @onclick="AddItem">Add Flag</button>
+</div>
+
+<div style="overflow-y: scroll;">
+    <ul class="list-group">
+        @foreach (var item in itemList)
+        {
+            <div style="padding: 0.5rem; border-radius: 0.25rem;">
+                <Pill FeatureFlag="item" OnChanged="SaveFeatureFlag" />
+            </div>
+        }
+    </ul>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div style="position: fixed; bottom: 1rem; right: 1rem; z-index: 2000; min-width: 320px;">
+        <Alert Color="AlertColor.Warning" Dismissable="true">
+            @errorMessage
+        </Alert>
+    </div>
+}
+
+@code {
+    private List<FeatureFlag> itemList = new();
+
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        itemList = await Db.FeatureFlags
+            .OrderBy(f => f.Id)
+            .ToListAsync();
+    }
+
+    private async Task AddItem()
+    {
+        var newItem = new FeatureFlag
+        {
+            Name = $"Item {itemList.Count + 1}",
+            Description = "",
+            IsEnabled = false
+        };
+
+        Db.FeatureFlags.Add(newItem);
+        await Db.SaveChangesAsync();
+
+        itemList.Add(newItem);
+    }
+
+    private async Task SaveFeatureFlag(FeatureFlag featureFlag)
+    {
+        errorMessage = null;
+
+        var duplicateExists = await Db.FeatureFlags
+            .AnyAsync(f => f.Name == featureFlag.Name && f.Id != featureFlag.Id);
+
+        if (duplicateExists)
+        {
+            errorMessage = "A feature flag with that name already exists.";
+            return;
+        }
+
+        try
+        {
+            Db.FeatureFlags.Update(featureFlag);
+            await Db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            errorMessage = "A feature flag with that name already exists.";
+        }
+    }
+}
