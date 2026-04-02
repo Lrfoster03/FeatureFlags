@@ -3,4 +3,7 @@
     <Project Path="src/FeatureFlags/FeatureFlags.csproj" />
   </Folder>
   <Folder Name="/src/featureflags/" />
+  <Folder Name="/tests/">
+    <Project Path="tests/FeatureFlags.Tests/FeatureFlags.Tests.csproj" />
+  </Folder>
 </Solution>
