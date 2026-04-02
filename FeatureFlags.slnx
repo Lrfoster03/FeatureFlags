@@ -1,2 +1,6 @@
 <Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FeatureFlags/FeatureFlags.csproj" />
+  </Folder>
+  <Folder Name="/src/featureflags/" />
 </Solution>
