@@ -1,0 +1,94 @@
+@using FeatureFlags.Components.Models
+@using BlazorBootstrap
+
+<div class="feature-pill btn btn-primary rounded-pill @(isExpanded ? "expanded" : "collapsed")">
+    <div class="pill-header" @onclick="ToggleExpanded">
+        <div class="pill-title">
+            @(string.IsNullOrWhiteSpace(FeatureFlag?.Name) ? "New Feature Flag" : FeatureFlag.Name)
+        </div>
+
+        <div class="pill-status">
+            <span class="badge bg-light text-dark">
+                @(FeatureFlag?.IsEnabled == true ? "On" : "Off")
+            </span>
+        </div>
+    </div>
+
+    @if (isExpanded)
+    {
+        <div class="pill-body">
+            <div class="mb-3">
+                <label class="form-label text-white">Name</label>
+                <input class="form-control" value="@FeatureFlag!.Name" @oninput="HandleNameChanged"
+                       @onclick:stopPropagation="true" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label text-white">Description</label>
+                <textarea class="form-control" rows="3" @oninput="HandleDescriptionChanged"
+                          @onclick:stopPropagation="true">@FeatureFlag.Description</textarea>
+            </div>
+
+            <div class="d-flex align-items-center justify-content-between gap-3">
+                <label class="form-label text-white mb-0">Enabled</label>
+                <div @onclick:stopPropagation="true">
+                    <Switch @bind-Value="IsEnabledBound" Label="@(FeatureFlag.IsEnabled ? "On" : "Off")" />
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center justify-content-end mt-3 mb-3 ms-3 me-3" @onclick:stopPropagation="true">
+            <Button Color="ButtonColor.Danger" Size="ButtonSize.Small" class="me-3 mb-3" @onclick="DeleteFeatureFlag">
+                <i class="bi bi-trash"></i> Delete
+            </Button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public FeatureFlag FeatureFlag { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<FeatureFlag> OnChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<FeatureFlag> OnDelete { get; set; }
+
+    private bool isExpanded;
+
+    private bool IsEnabledBound
+    {
+        get => FeatureFlag.IsEnabled;
+        set
+        {
+            if (FeatureFlag.IsEnabled != value)
+            {
+                FeatureFlag.IsEnabled = value;
+                _ = OnChanged.InvokeAsync(FeatureFlag);
+            }
+        }
+    }
+
+    private void ToggleExpanded()
+    {
+        isExpanded = !isExpanded;
+    }
+
+    private async Task HandleNameChanged(ChangeEventArgs e)
+    {
+        FeatureFlag.Name = e.Value?.ToString() ?? string.Empty;
+        await OnChanged.InvokeAsync(FeatureFlag);
+    }
+
+    private async Task HandleDescriptionChanged(ChangeEventArgs e)
+    {
+        FeatureFlag.Description = e.Value?.ToString() ?? string.Empty;
+        await OnChanged.InvokeAsync(FeatureFlag);
+    }
+
+    private async Task DeleteFeatureFlag()
+    {
+        await OnDelete.InvokeAsync(FeatureFlag);
+    }
+}
