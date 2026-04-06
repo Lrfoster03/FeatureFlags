@@ -1,8 +1,7 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/FeatureFlags/FeatureFlags.csproj" />
+    <Project Path="src/featureflags/FeatureFlags.csproj" />
   </Folder>
-  <Folder Name="/src/featureflags/" />
   <Folder Name="/tests/">
     <Project Path="tests/FeatureFlags.Tests/FeatureFlags.Tests.csproj" />
   </Folder>
