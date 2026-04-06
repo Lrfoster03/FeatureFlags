@@ -5,7 +5,7 @@ using FeatureFlags.Components.Models;
 
 namespace FeatureFlags.Tests;
 
-public class PillTests : TestContext
+public class PillTests : BunitContext
 {
     [Fact]
     public void Pill_Renders_FeatureFlag_Name()
@@ -17,9 +17,9 @@ public class PillTests : TestContext
             IsEnabled = true
         };
 
-        var cut = RenderComponent<Pill>(parameters => parameters
+        var cut = Render<Pill>(parameters => parameters
             .Add(p => p.FeatureFlag, flag));
 
-        cut.Markup.Contains("MyTestFlag");
+        Assert.Contains("MyTestFlag", cut.Markup);
     }
 }
