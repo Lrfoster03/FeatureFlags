@@ -3,9 +3,11 @@
 @using FeatureFlags.Components.Models
 @using FeatureFlags.Components.Shared
 @using FeatureFlags.Data
+@using FeatureFlags.Services
 @using Microsoft.EntityFrameworkCore
 @using BlazorBootstrap
 @inject FeatureFlagDbContext Db
+@inject IFeatureFlagConfirmationService ConfirmationService
 
 <PageTitle>Feature Flags</PageTitle>
 
@@ -95,19 +97,9 @@
     {
         errorMessage = null;
 
-        var confirmed = await confirmDialog.ShowAsync(
-            title: "Delete Feature Flag",
-            message1: $"Are you sure you want to delete '{featureFlag.Name}'?",
-            message2: "This action cannot be undone.",
-            confirmDialogOptions: new ConfirmDialogOptions
-            {
-                YesButtonText = "Delete",
-                YesButtonColor = ButtonColor.Danger,
-                NoButtonText = "Cancel",
-                NoButtonColor = ButtonColor.Secondary
-            });
+        var confirmed = await ConfirmationService.ConfirmDeleteAsync(confirmDialog, featureFlag.Name);
 
-        if (confirmed != true)
+        if (!confirmed)
             return;
 
         try

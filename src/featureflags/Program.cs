@@ -1,6 +1,7 @@
 using FeatureFlags.Data;
 using FeatureFlags.Components;
 using FeatureFlags.Components.Models;
+using FeatureFlags.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,6 +11,7 @@ builder.Services.AddRazorComponents()
 
 builder.Services.AddDbContext<FeatureFlagDbContext>(options =>
     options.UseSqlite("Data Source=featureflags.db"));
+builder.Services.AddScoped<IFeatureFlagConfirmationService, FeatureFlagConfirmationService>();
 
 var app = builder.Build();
 
