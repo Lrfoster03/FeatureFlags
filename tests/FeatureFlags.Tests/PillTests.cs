@@ -22,4 +22,28 @@ public class PillTests : BunitContext
 
         Assert.Contains("MyTestFlag", cut.Markup);
     }
+    
+    [Fact]
+    public void Pill_Delete_Click_Invokes_OnDelete()
+    {
+        var flag = new FeatureFlag
+        {
+            Id = 1,
+            Name = "MyFlag",
+            Description = "My description",
+            IsEnabled = false
+        };
+
+        FeatureFlag? deleted = null;
+
+        var cut = Render<Pill>(ps => ps
+            .Add(p => p.FeatureFlag, flag)
+            .Add(p => p.OnDelete, f => deleted = f));
+
+        cut.Find(".pill-header").Click();
+        cut.Find("button[title='Delete feature flag'], button").Click();
+
+        Assert.NotNull(deleted);
+        Assert.Equal(flag.Id, deleted!.Id);
+    }
 }
