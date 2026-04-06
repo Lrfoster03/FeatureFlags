@@ -3,7 +3,7 @@ using FeatureFlags.Components.Shared;
 using FeatureFlags.Components.Models;
 using FeatureFlags.Components;
 
-public class UnitTest1
+public class FeatureFlagTests
 {
     [Fact]
     public void TestFeatureFlagCreation()
