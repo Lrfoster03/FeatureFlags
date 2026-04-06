@@ -50,4 +50,16 @@ public class UnitTest1
         Assert.Equal("TestFeature", featureFlag.Name);
         Assert.True(featureFlag.IsEnabled);
     }
+
+    [Fact]
+    public void TestFeatureFlagCreationWithValues()
+    {
+        var featureFlag = new FeatureFlag("testFlag", "A test feature flag", true);
+
+        Assert.NotNull(featureFlag);
+        Assert.Equal("testFlag", featureFlag.Name);
+        Assert.True(featureFlag.IsEnabled);
+        Assert.Equal(0, featureFlag.Id);
+        Assert.Equal("A test feature flag", featureFlag.Description);
+    }
 }
