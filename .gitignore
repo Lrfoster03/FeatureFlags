@@ -54,6 +54,6 @@ TestResult.xml
 nunit-*.xml
 
 # Database files
-*.db
+*.db*
 
 coveragereport/
