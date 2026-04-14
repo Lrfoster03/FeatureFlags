@@ -77,7 +77,8 @@ https://localhost:xxxx
 ### Get all feature flags
 
 ```
-GET {hostURL}/api/featureflags
+curl --location 'http://localhost:5081/api/featureflags' \
+--header 'user: lfoster03'
 ```
 
 ### Example Response
