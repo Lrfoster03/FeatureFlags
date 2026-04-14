@@ -34,3 +34,7 @@
 .pill-body {
     padding: 0 1.25rem 1.25rem 1.25rem;
 }
+
+.rollout-input {
+    max-width: 120px;
+}

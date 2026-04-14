@@ -10,10 +10,13 @@ public class FeatureFlag
     private readonly string? _salt;
     public string Salt { get; }
 
+    public int PercentageRollout { get; set; } = 0; // 0-100 for percentage rollout
+
     public FeatureFlag()
     {
         _salt = SaltGenerator.CreateSalt();
         Salt = _salt;
+        PercentageRollout = 0;
     }
 
     public FeatureFlag(string name, string description = "", bool isEnabled = false)
@@ -23,5 +26,6 @@ public class FeatureFlag
         IsEnabled = isEnabled;
         _salt = SaltGenerator.CreateSalt();
         Salt = _salt;
+        PercentageRollout = 0;
     }
 }
