@@ -7,8 +7,13 @@ public class FeatureFlag
     public string Description { get; set; } = string.Empty;
     public bool IsEnabled { get; set; }
 
+    private readonly string? _salt;
+    public string Salt { get; }
+
     public FeatureFlag()
     {
+        _salt = SaltGenerator.CreateSalt();
+        Salt = _salt;
     }
 
     public FeatureFlag(string name, string description = "", bool isEnabled = false)
@@ -16,5 +21,7 @@ public class FeatureFlag
         Name = name;
         Description = description;
         IsEnabled = isEnabled;
+        _salt = SaltGenerator.CreateSalt();
+        Salt = _salt;
     }
 }
