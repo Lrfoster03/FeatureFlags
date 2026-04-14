@@ -3,6 +3,9 @@ using FeatureFlags.Components;
 using FeatureFlags.Components.Models;
 using FeatureFlags.Services;
 using Microsoft.EntityFrameworkCore;
+using FeatureFlags.Core;
+using Microsoft.AspNetCore.Mvc;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,18 +33,17 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.MapGet("/api/featureflags", async (FeatureFlagDbContext db) =>
+app.MapGet("/api/featureflags", async (
+    [FromHeader(Name = "user")] string? user,
+    FeatureFlagDbContext db) =>
 {
+    var userId = user ?? string.Empty;
+
     var flags = await db.FeatureFlags
         .OrderBy(f => f.Name)
         .ToListAsync();
 
-    var response = new FeatureFlagsResponse
-    {
-        FeatureFlags = flags.ToDictionary(
-            f => f.Name,
-            f => f.IsEnabled)
-    };
+    var response = Evaluator.Evaluate(flags, userId);
 
     return Results.Ok(response);
 });
