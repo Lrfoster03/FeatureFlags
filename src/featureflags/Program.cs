@@ -49,7 +49,16 @@ app.MapGet("/api/featureflags", async (FeatureFlagDbContext db) =>
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<FeatureFlagDbContext>();
+
+    if (app.Environment.IsDevelopment() && db.Database.HasPendingModelChanges())
+    {
+        throw new InvalidOperationException(
+            "EF model changes detected without a migration. " +
+            "Run: dotnet ef migrations add <Name> --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj");
+    }
+
     db.Database.Migrate();
 }
+
 
 app.Run();

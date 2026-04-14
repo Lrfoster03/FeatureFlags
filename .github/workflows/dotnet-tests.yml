@@ -25,6 +25,9 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
+      - name: Check For Pending Migrations
+        run: dotnet ef migrations has-pending-model-changes --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj
+
       - name: Test with coverage
         run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./TestResults
 
