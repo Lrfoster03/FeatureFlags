@@ -1,4 +1,4 @@
-name: .NET Build and Test
+name: CI
 
 on:
   push:
@@ -7,39 +7,28 @@ on:
     branches: [main]
 
 jobs:
-  build-test:
+  unit-tests:
     runs-on: ubuntu-latest
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: Restore
-        run: dotnet restore
-
-      - name: Build
-        run: dotnet build --no-restore --configuration Release
-
-      - name: Check For Pending Migrations
-        run: dotnet ef migrations has-pending-model-changes --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj
-
-      - name: Test with coverage
-        run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./TestResults
-
-      - name: Install ReportGenerator
-        run: dotnet tool install --global dotnet-reportgenerator-globaltool
-
-      - name: Generate HTML coverage report
+      - name: Run restore, build, migration check, and tests in SDK container
         run: |
-          reportgenerator \
-            -reports:"TestResults/**/coverage.cobertura.xml" \
-            -targetdir:"CoverageReport" \
-            -reporttypes:"Html;MarkdownSummaryGithub"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            mcr.microsoft.com/dotnet/sdk:10.0 \
+            bash -lc '
+              dotnet restore
+              dotnet build --no-restore --configuration Release
+              dotnet tool restore
+              dotnet tool install --tool-path /tmp/dotnet-tools dotnet-ef --version 10.*
+              /tmp/dotnet-tools/dotnet-ef migrations has-pending-model-changes --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj
+              dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./TestResults
+              dotnet tool run reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:"CoverageReport" -reporttypes:"Html;MarkdownSummaryGithub"
+            '
 
       - name: Add coverage summary to job
         run: cat CoverageReport/SummaryGithub.md >> "$GITHUB_STEP_SUMMARY"
@@ -55,3 +44,36 @@ jobs:
         with:
           name: coverage-report-html
           path: CoverageReport
+
+  container-smoke-test:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build app image
+        run: docker compose build
+
+      - name: Start app container
+        run: docker compose up -d
+
+      - name: Wait for API and run smoke test
+        run: |
+          for attempt in {1..30}; do
+            if curl -fsS -H "user: ci-smoke" http://127.0.0.1:8080/api/featureflags; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop app container
+        if: always()
+        run: docker compose down -v

@@ -70,6 +70,33 @@ https://localhost:xxxx
 
 (most likely http://localhost:5081/)
 
+### 5. Run with Docker
+
+Build and run the container directly:
+
+```bash
+docker build -t featureflags .
+docker run --rm -p 8080:8080 -v featureflags-data:/data featureflags
+```
+
+Or use Docker Compose:
+
+```bash
+docker compose up --build
+```
+
+Then open:
+
+```
+http://localhost:8080
+```
+
+Notes:
+
+* The container stores the SQLite database at `/data/featureflags.db`
+* `docker-compose.yml` mounts `/data` as a named volume so data survives container restarts
+* The app still applies EF Core migrations automatically on startup
+
 ---
 
 ## 📡 API Usage
@@ -126,6 +153,7 @@ Program.cs              # App + API setup
 * Migrations stored in `/Migrations`
 * Uses `DbContext` injection for data access
 * UI changes auto-save to database
+* Override the runtime DB path with `ConnectionStrings__FeatureFlags`
 
 ---
 

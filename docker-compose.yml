@@ -1,0 +1,15 @@
+services:
+  featureflags:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__FeatureFlags: Data Source=/data/featureflags.db
+    volumes:
+      - featureflags-data:/data
+
+volumes:
+  featureflags-data:

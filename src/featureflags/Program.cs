@@ -12,8 +12,11 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+var connectionString = builder.Configuration.GetConnectionString(FeatureFlagDbContextFactory.ConnectionStringName)
+    ?? FeatureFlagDbContextFactory.DefaultConnectionString;
+
 builder.Services.AddDbContext<FeatureFlagDbContext>(options =>
-    options.UseSqlite("Data Source=featureflags.db"));
+    options.UseSqlite(connectionString));
 builder.Services.AddScoped<IFeatureFlagConfirmationService, FeatureFlagConfirmationService>();
 
 var app = builder.Build();

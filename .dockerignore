@@ -1,0 +1,8 @@
+.git
+.gitignore
+.env
+**/bin/
+**/obj/
+**/.DS_Store
+featureflags.db
+src/featureflags/featureflags.db
