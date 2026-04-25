@@ -17,8 +17,8 @@ public class HomeTests : BunitContext
     {
         using var database = new TestDatabase();
         database.Seed(
-            new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", IsEnabled = true },
-            new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", IsEnabled = false });
+            new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 },
+            new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", PercentageRollout = 0 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddScoped(_ => database.CreateContext());
@@ -35,7 +35,7 @@ public class HomeTests : BunitContext
 
         Assert.Equal(3, assertContext.FeatureFlags.Count());
         Assert.Equal(string.Empty, created.Description);
-        Assert.False(created.IsEnabled);
+        Assert.Equal(0, created.PercentageRollout);
         Assert.Contains("Item 3", cut.Markup);
     }
 
@@ -44,15 +44,15 @@ public class HomeTests : BunitContext
     {
         using var database = new TestDatabase();
         database.Seed(
-            new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", IsEnabled = true },
-            new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", IsEnabled = false });
+            new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 },
+            new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", PercentageRollout = 0 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddScoped(_ => database.CreateContext());
 
         var cut = Render<Home>();
         var firstPill = cut.FindComponents<Pill>().Single(p => p.Instance.FeatureFlag.Id == 1);
-        var updatedFlag = new FeatureFlag { Id = 1, Name = "  Beta  ", Description = "Updated", IsEnabled = false };
+        var updatedFlag = new FeatureFlag { Id = 1, Name = "  Beta  ", Description = "Updated", PercentageRollout = 50 };
 
         await cut.InvokeAsync(() => firstPill.Instance.OnChanged.InvokeAsync(updatedFlag));
 
@@ -62,14 +62,14 @@ public class HomeTests : BunitContext
         var persisted = assertContext.FeatureFlags.Single(f => f.Id == 1);
         Assert.Equal("Alpha", persisted.Name);
         Assert.Equal("First", persisted.Description);
-        Assert.True(persisted.IsEnabled);
+        Assert.Equal(100, persisted.PercentageRollout);
     }
 
     [Fact]
     public async Task Home_Saves_Updated_Flag_When_Name_Is_Unique()
     {
         using var database = new TestDatabase();
-        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", IsEnabled = true });
+        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddScoped(_ => database.CreateContext());
@@ -79,7 +79,7 @@ public class HomeTests : BunitContext
         var updatedFlag = firstPill.Instance.FeatureFlag;
         updatedFlag.Name = "  Gamma  ";
         updatedFlag.Description = "Updated";
-        updatedFlag.IsEnabled = false;
+        updatedFlag.PercentageRollout = 42;
 
         await cut.InvokeAsync(() => firstPill.Instance.OnChanged.InvokeAsync(updatedFlag));
 
@@ -88,7 +88,7 @@ public class HomeTests : BunitContext
 
         Assert.Equal("Gamma", persisted.Name);
         Assert.Equal("Updated", persisted.Description);
-        Assert.False(persisted.IsEnabled);
+        Assert.Equal(42, persisted.PercentageRollout);
         Assert.DoesNotContain("already exists", cut.Markup);
     }
 
@@ -96,7 +96,7 @@ public class HomeTests : BunitContext
     public async Task Home_Shows_Error_When_Save_Throws_DbUpdateException()
     {
         using var database = new TestDatabase();
-        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", IsEnabled = true });
+        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddScoped<FeatureFlagDbContext>(_ => new ThrowingFeatureFlagDbContext(
@@ -108,7 +108,7 @@ public class HomeTests : BunitContext
         var updatedFlag = firstPill.Instance.FeatureFlag;
         updatedFlag.Name = "Gamma";
         updatedFlag.Description = "Updated";
-        updatedFlag.IsEnabled = false;
+        updatedFlag.PercentageRollout = 25;
 
         await cut.InvokeAsync(() => firstPill.Instance.OnChanged.InvokeAsync(updatedFlag));
 
@@ -119,7 +119,7 @@ public class HomeTests : BunitContext
     public async Task Home_Delete_Returns_Without_Removing_When_Not_Confirmed()
     {
         using var database = new TestDatabase();
-        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", IsEnabled = true });
+        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddScoped(_ => database.CreateContext());
@@ -139,7 +139,7 @@ public class HomeTests : BunitContext
     public async Task Home_Shows_Error_When_Deleting_Missing_Flag()
     {
         using var database = new TestDatabase();
-        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", IsEnabled = true });
+        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
         Services.AddScoped(_ => database.CreateContext());
@@ -157,7 +157,7 @@ public class HomeTests : BunitContext
     public async Task Home_Shows_Error_When_Delete_Throws()
     {
         using var database = new TestDatabase();
-        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", IsEnabled = true });
+        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
         Services.AddScoped<FeatureFlagDbContext>(_ => new ThrowingFeatureFlagDbContext(
@@ -177,8 +177,8 @@ public class HomeTests : BunitContext
     {
         using var database = new TestDatabase();
         database.Seed(
-            new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", IsEnabled = true },
-            new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", IsEnabled = false });
+            new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 },
+            new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", PercentageRollout = 0 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
         Services.AddScoped(_ => database.CreateContext());

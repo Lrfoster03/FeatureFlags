@@ -14,13 +14,14 @@ public class PillTests : BunitContext
         {
             Name = "MyTestFlag",
             Description = "Test description",
-            IsEnabled = true
+            PercentageRollout = 100
         };
 
         var cut = Render<Pill>(parameters => parameters
             .Add(p => p.FeatureFlag, flag));
 
         Assert.Contains("MyTestFlag", cut.Markup);
+        Assert.Contains("100%", cut.Markup);
     }
     
     [Fact]
@@ -31,7 +32,7 @@ public class PillTests : BunitContext
             Id = 1,
             Name = "MyFlag",
             Description = "My description",
-            IsEnabled = false
+            PercentageRollout = 0
         };
 
         FeatureFlag? deleted = null;
@@ -41,7 +42,7 @@ public class PillTests : BunitContext
             .Add(p => p.OnDelete, f => deleted = f));
 
         cut.Find(".pill-header").Click();
-        cut.Find("button[title='Delete feature flag'], button").Click();
+        cut.Find("button").Click();
 
         Assert.NotNull(deleted);
         Assert.Equal(flag.Id, deleted!.Id);

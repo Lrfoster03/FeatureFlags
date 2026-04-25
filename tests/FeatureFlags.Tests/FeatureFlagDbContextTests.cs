@@ -49,7 +49,7 @@ public class FeatureFlagDbContextTests
         {
             Name = "Alpha",
             Description = "First",
-            IsEnabled = true
+            PercentageRollout = 100
         });
         await context.SaveChangesAsync();
 
@@ -57,7 +57,7 @@ public class FeatureFlagDbContextTests
         {
             Name = "Alpha",
             Description = "Duplicate",
-            IsEnabled = false
+            PercentageRollout = 0
         });
 
         await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
@@ -73,7 +73,7 @@ public class FeatureFlagDbContextTests
         var connectionString = context.Database.GetConnectionString();
 
         Assert.NotNull(connectionString);
-        Assert.Contains("Data Source=featureflags.db", connectionString);
+        Assert.Contains(FeatureFlagDbContextFactory.DefaultConnectionString, connectionString);
         Assert.Equal("Microsoft.EntityFrameworkCore.Sqlite", context.Database.ProviderName);
     }
 
