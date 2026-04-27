@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__FeatureFlags: Data Source=/data/featureflags.db
