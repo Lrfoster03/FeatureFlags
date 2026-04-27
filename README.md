@@ -47,6 +47,7 @@ cd feature-flags
 
 ```bash
 dotnet restore
+brew install --cask docker
 ```
 
 ### 3. Apply database migrations
@@ -59,16 +60,14 @@ dotnet ef database update
 ### 4. Run the app
 
 ```bash
-dotnet run
+./scripts/docker-up.sh
 ```
 
 Open your browser at:
 
 ```
-https://localhost:xxxx
+http://localhost:<selected-port>
 ```
-
-(most likely http://localhost:5081/)
 
 ### 5. Run with Docker
 
@@ -82,13 +81,13 @@ docker run --rm -p 8080:8080 -v featureflags-data:/data featureflags
 Or use Docker Compose:
 
 ```bash
-docker compose up --build
+./scripts/docker-up.sh
 ```
 
 Then open:
 
 ```
-http://localhost:8080
+http://localhost:<selected-port>
 ```
 
 Notes:
@@ -96,6 +95,9 @@ Notes:
 * The container stores the SQLite database at `/data/featureflags.db`
 * `docker-compose.yml` mounts `/data` as a named volume so data survives container restarts
 * The app still applies EF Core migrations automatically on startup
+* `scripts/docker-up.sh` picks the first available host port from `8080` to `8090`
+* You can override the search range: `./scripts/docker-up.sh 8085 8100`
+* Running `docker compose up --build` directly still defaults to host port `8080`; set `HOST_PORT` yourself if you want to pick a different one
 
 ---
 
@@ -103,9 +105,9 @@ Notes:
 
 ### Get all feature flags
 
-```
-curl --location 'http://localhost:5081/api/featureflags' \
---header 'user: lfoster03'
+```bash
+curl --location 'http://localhost:<selected-port>/api/featureflags' \
+  --header 'user: <userID>'
 ```
 
 ### Example Response
