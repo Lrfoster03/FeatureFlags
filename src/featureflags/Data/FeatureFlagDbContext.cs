@@ -5,7 +5,12 @@ namespace FeatureFlags.Data;
 
 public class FeatureFlagDbContext(DbContextOptions<FeatureFlagDbContext> options) : DbContext(options)
 {
+    public DbSet<Project> Projects => Set<Project>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
+
+    public DbSet<ProjectEnvironment> ProjectEnvironments => Set<ProjectEnvironment>();
+
+    public DbSet<ClientKey> ClientKeys => Set<ClientKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
 {

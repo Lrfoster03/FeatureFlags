@@ -6,8 +6,13 @@
 @using FeatureFlags.Services
 @using Microsoft.EntityFrameworkCore
 @using BlazorBootstrap
+@using Microsoft.AspNetCore.Authorization
+
 @inject FeatureFlagDbContext Db
+
 @inject IFeatureFlagConfirmationService ConfirmationService
+
+@attribute [Authorize]
 
 <PageTitle>Feature Flags</PageTitle>
 
@@ -54,10 +59,23 @@
     {
         errorMessage = null;
 
+        var environment = await Db.ProjectEnvironments
+            .OrderBy(e => e.Id)
+            .FirstOrDefaultAsync();
+
+        if (environment is null)
+        {
+            errorMessage = "No project environment exists. Create a project environment first.";
+            return;
+        }
+
         var newItem = new FeatureFlag
         {
             Name = $"Item {itemList.Count + 1}",
             Description = "",
+            IsEnabled = false,
+            PercentageRollout = 0,
+            ProjectEnvironmentId = environment.Id
         };
 
         Db.FeatureFlags.Add(newItem);
