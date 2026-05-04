@@ -77,6 +77,8 @@ Data/
   20260504011227_Projects.Designer.cs
   20260504013939_AddProjectMembers.cs
   20260504013939_AddProjectMembers.Designer.cs
+  20260504014649_AddProjectMemberDisplayFields.cs
+  20260504014649_AddProjectMemberDisplayFields.Designer.cs
   FeatureFlagDbContextModelSnapshot.cs
  Migrations/Identity/
   20260503234640_InitialIdentitySchema.cs

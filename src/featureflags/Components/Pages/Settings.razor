@@ -1,0 +1,155 @@
+@page "/settings"
+@rendermode InteractiveServer
+@attribute [Authorize]
+
+@using System.Security.Claims
+@using FeatureFlags.Components.Models
+@using FeatureFlags.Data
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+
+@inject FeatureFlagDbContext Db
+@inject ApplicationDbContext IdentityDb
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Settings</PageTitle>
+
+<h1>Project Settings</h1>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success">@successMessage</div>
+}
+
+<div class="card p-3 mb-4">
+    <h4>Add Project Member</h4>
+
+    <div class="mb-3">
+        <label class="form-label">User Email</label>
+        <input class="form-control" @bind="memberEmail" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Role</label>
+        <select class="form-select" @bind="selectedRole">
+            <option value="@ProjectRole.Viewer">Viewer</option>
+            <option value="@ProjectRole.Editor">Editor</option>
+            <option value="@ProjectRole.Admin">Admin</option>
+            <option value="@ProjectRole.Owner">Owner</option>
+        </select>
+    </div>
+
+    <button class="btn btn-primary" @onclick="AddMember">Add Member</button>
+</div>
+
+<div class="card p-3">
+    <h4>Members</h4>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Email</th>
+                <th>Display Name</th>
+                <th>User Id</th>
+                <th>Role</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var member in members)
+            {
+                <tr>
+                    <td>@member.Email</td>
+                    <td>@(string.IsNullOrWhiteSpace(member.DisplayName) ? "—" : member.DisplayName)</td>
+                    <td><code>@member.UserId</code></td>
+                    <td>@member.Role</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private int projectId;
+    private string memberEmail = string.Empty;
+    private ProjectRole selectedRole = ProjectRole.Viewer;
+    private string? errorMessage;
+    private string? successMessage;
+    private List<ProjectMember> members = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var project = await Db.Projects.OrderBy(p => p.Id).FirstAsync();
+        projectId = project.Id;
+
+        members = await Db.ProjectMembers
+            .Where(m => m.ProjectId == projectId)
+            .OrderBy(m => m.Role)
+            .ToListAsync();
+    }
+
+    private async Task AddMember()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var canManageMembers = await Db.ProjectMembers.AnyAsync(m =>
+            m.ProjectId == projectId &&
+            m.UserId == currentUserId &&
+            (m.Role == ProjectRole.Owner || m.Role == ProjectRole.Admin));
+
+        if (!canManageMembers)
+        {
+            errorMessage = "You do not have permission to manage project members.";
+            return;
+        }
+
+        var normalizedEmail = memberEmail.Trim().ToUpperInvariant();
+
+        var user = await IdentityDb.Users
+            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail);
+
+        if (user is null)
+        {
+            errorMessage = "No registered user found with that email.";
+            return;
+        }
+
+        var alreadyMember = await Db.ProjectMembers.AnyAsync(m =>
+            m.ProjectId == projectId &&
+            m.UserId == user.Id);
+
+        if (alreadyMember)
+        {
+            errorMessage = "That user is already a member of this project.";
+            return;
+        }
+
+        Db.ProjectMembers.Add(new ProjectMember
+        {
+            ProjectId = projectId,
+            UserId = user.Id,
+            Email = user.Email ?? memberEmail.Trim(),
+            DisplayName = user.UserName ?? user.Email ?? memberEmail.Trim(),
+            Role = selectedRole
+        });
+
+        await Db.SaveChangesAsync();
+
+        members = await Db.ProjectMembers
+            .Where(m => m.ProjectId == projectId)
+            .OrderBy(m => m.Role)
+            .ToListAsync();
+
+        memberEmail = string.Empty;
+        successMessage = "Project member added.";
+    }
+}

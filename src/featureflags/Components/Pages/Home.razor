@@ -75,6 +75,12 @@
             {
                 ProjectId = project.Id,
                 UserId = userId,
+                Email = authState.User.FindFirstValue(ClaimTypes.Email)
+        ?? authState.User.Identity?.Name
+        ?? string.Empty,
+                DisplayName = authState.User.Identity?.Name
+        ?? authState.User.FindFirstValue(ClaimTypes.Email)
+        ?? string.Empty,
                 Role = ProjectRole.Owner
             });
 
