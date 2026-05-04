@@ -7,8 +7,12 @@
 @using Microsoft.EntityFrameworkCore
 @using BlazorBootstrap
 @using Microsoft.AspNetCore.Authorization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 @inject FeatureFlagDbContext Db
+
 
 @inject IFeatureFlagConfirmationService ConfirmationService
 
@@ -50,9 +54,36 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (userId is null)
+        {
+            return;
+        }
+
+        var project = await Db.Projects
+            .Include(p => p.Environments)
+            .FirstAsync();
+
+        var isMember = await Db.ProjectMembers
+            .AnyAsync(m => m.ProjectId == project.Id && m.UserId == userId);
+
+        if (!isMember)
+        {
+            Db.ProjectMembers.Add(new ProjectMember
+            {
+                ProjectId = project.Id,
+                UserId = userId,
+                Role = ProjectRole.Owner
+            });
+
+            await Db.SaveChangesAsync();
+        }
+
         itemList = await Db.FeatureFlags
-            .OrderBy(f => f.Id)
-            .ToListAsync();
+                    .Where(f => f.ProjectEnvironment.ProjectId == project.Id)
+                    .ToListAsync();
     }
 
     private async Task AddItem()

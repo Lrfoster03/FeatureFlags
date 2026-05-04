@@ -8,6 +8,8 @@ public class FeatureFlagDbContext(DbContextOptions<FeatureFlagDbContext> options
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
 
+    public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
+
     public DbSet<ProjectEnvironment> ProjectEnvironments => Set<ProjectEnvironment>();
 
     public DbSet<ClientKey> ClientKeys => Set<ClientKey>();
@@ -29,5 +31,14 @@ public class FeatureFlagDbContext(DbContextOptions<FeatureFlagDbContext> options
     modelBuilder.Entity<ClientKey>()
         .HasIndex(k => k.Key)
         .IsUnique();
+
+    modelBuilder.Entity<ProjectMember>()
+    .HasIndex(m => new { m.ProjectId, m.UserId })
+    .IsUnique();
+
+modelBuilder.Entity<ProjectMember>()
+    .HasOne(m => m.Project)
+    .WithMany(p => p.Members)
+    .HasForeignKey(m => m.ProjectId);
 }
 }

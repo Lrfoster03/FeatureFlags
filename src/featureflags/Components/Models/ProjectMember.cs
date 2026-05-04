@@ -4,18 +4,12 @@ public class ProjectMember
 {
     public int Id { get; set; }
 
-    public string UserId { get; set; } = string.Empty; // Identity user id
+    public string UserId { get; set; } = string.Empty;
 
     public int ProjectId { get; set; }
     public Project Project { get; set; } = default!;
 
-    public ProjectRole Role { get; set; }
-}
+    public ProjectRole Role { get; set; } = ProjectRole.Viewer;
 
-public enum ProjectRole
-{
-    Viewer,
-    Editor,
-    Admin,
-    Owner
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

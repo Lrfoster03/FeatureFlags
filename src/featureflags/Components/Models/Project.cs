@@ -6,4 +6,6 @@ public class Project
     public string Name { get; set; } = string.Empty;
 
     public List<ProjectEnvironment> Environments { get; set; } = [];
+
+    public List<ProjectMember> Members { get; set; } = [];
 }
