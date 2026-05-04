@@ -16,4 +16,6 @@ public class ProjectMember
     public ProjectRole Role { get; set; } = ProjectRole.Viewer;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime? RevokedAt { get; set; }
 }

@@ -9,12 +9,11 @@
 @using Microsoft.AspNetCore.Authorization
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
-@inject AuthenticationStateProvider AuthenticationStateProvider
 
 @inject FeatureFlagDbContext Db
-
-
 @inject IFeatureFlagConfirmationService ConfirmationService
+@inject IProjectPermissionService PermissionService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 @attribute [Authorize]
 
@@ -52,6 +51,9 @@
     private string? errorMessage;
     private ConfirmDialog confirmDialog = default!;
 
+    private Project? project;
+    private ProjectEnvironment? environment;
+
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -62,12 +64,14 @@
             return;
         }
 
-        var project = await Db.Projects
+        this.project = await Db.Projects
             .Include(p => p.Environments)
             .FirstAsync();
 
+        this.environment = project.Environments.FirstOrDefault() ?? throw new Exception("No project environment found.");
+
         var isMember = await Db.ProjectMembers
-            .AnyAsync(m => m.ProjectId == project.Id && m.UserId == userId);
+                    .AnyAsync(m => m.ProjectId == project.Id && m.UserId == userId);
 
         if (!isMember)
         {
@@ -76,12 +80,12 @@
                 ProjectId = project.Id,
                 UserId = userId,
                 Email = authState.User.FindFirstValue(ClaimTypes.Email)
-        ?? authState.User.Identity?.Name
-        ?? string.Empty,
+                    ?? authState.User.Identity?.Name
+                    ?? string.Empty,
                 DisplayName = authState.User.Identity?.Name
-        ?? authState.User.FindFirstValue(ClaimTypes.Email)
-        ?? string.Empty,
-                Role = ProjectRole.Owner
+                    ?? authState.User.FindFirstValue(ClaimTypes.Email)
+                    ?? string.Empty,
+                Role = this.project.Members.Count == 0 ? ProjectRole.Owner : ProjectRole.Editor
             });
 
             await Db.SaveChangesAsync();
@@ -92,15 +96,39 @@
                     .ToListAsync();
     }
 
+    private async Task<bool> EnsureCanEditAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var canEdit = await PermissionService.CanEditFlagsAsync(this.project.Id, currentUserId);
+
+        if (!canEdit)
+        {
+            errorMessage = "You do not have permission to edit feature flags.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task ReloadFlagsAsync()
+    {
+        itemList = await Db.FeatureFlags
+            .Where(f => f.ProjectEnvironmentId == this.environment!.Id)
+            .OrderBy(f => f.Name)
+            .ToListAsync();
+    }
+
     private async Task AddItem()
     {
+        if (!await EnsureCanEditAsync())
+            return;
+
         errorMessage = null;
 
-        var environment = await Db.ProjectEnvironments
-            .OrderBy(e => e.Id)
-            .FirstOrDefaultAsync();
 
-        if (environment is null)
+        if (this.environment is null)
         {
             errorMessage = "No project environment exists. Create a project environment first.";
             return;
@@ -112,23 +140,31 @@
             Description = "",
             IsEnabled = false,
             PercentageRollout = 0,
-            ProjectEnvironmentId = environment.Id
+            ProjectEnvironmentId = this.environment!.Id
         };
 
         Db.FeatureFlags.Add(newItem);
         await Db.SaveChangesAsync();
 
         itemList.Add(newItem);
+
+        await ReloadFlagsAsync();
     }
 
     private async Task SaveFeatureFlag(FeatureFlag featureFlag)
     {
+        if (!await EnsureCanEditAsync())
+            return;
+
         errorMessage = null;
 
         featureFlag.Name = featureFlag.Name.Trim();
 
         var duplicateExists = await Db.FeatureFlags
-            .AnyAsync(f => f.Name == featureFlag.Name && f.Id != featureFlag.Id);
+            .AnyAsync(f =>
+                f.ProjectEnvironmentId == featureFlag.ProjectEnvironmentId &&
+                f.Name == featureFlag.Name &&
+                f.Id != featureFlag.Id);
 
         if (duplicateExists)
         {
@@ -145,10 +181,15 @@
         {
             errorMessage = $"A feature flag named '{featureFlag.Name}' already exists.";
         }
+
+        await ReloadFlagsAsync();
     }
 
     private async Task DeleteFeatureFlag(FeatureFlag featureFlag)
     {
+        if (!await EnsureCanEditAsync())
+            return;
+
         errorMessage = null;
 
         var confirmed = await ConfirmationService.ConfirmDeleteAsync(confirmDialog, featureFlag.Name);
@@ -175,5 +216,7 @@
         {
             errorMessage = $"Failed to delete feature flag '{featureFlag.Name}'.";
         }
+
+        await ReloadFlagsAsync();
     }
 }

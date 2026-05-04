@@ -20,6 +20,7 @@ var connectionString = builder.Configuration.GetConnectionString(FeatureFlagDbCo
 builder.Services.AddDbContext<FeatureFlagDbContext>(options =>
     options.UseSqlite(connectionString));
 builder.Services.AddScoped<IFeatureFlagConfirmationService, FeatureFlagConfirmationService>();
+builder.Services.AddScoped<IProjectPermissionService, ProjectPermissionService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString));

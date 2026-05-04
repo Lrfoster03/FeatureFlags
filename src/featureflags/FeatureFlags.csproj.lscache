@@ -81,6 +81,10 @@ Data/
   20260504014649_AddProjectMemberDisplayFields.Designer.cs
   20260504015820_AddClientKeys.cs
   20260504015820_AddClientKeys.Designer.cs
+  20260504040641_AddProjectMemberRevocation.cs
+  20260504040641_AddProjectMemberRevocation.Designer.cs
+  20260504043357_AddRevocationAndPermissionUpdates.cs
+  20260504043357_AddRevocationAndPermissionUpdates.Designer.cs
   FeatureFlagDbContextModelSnapshot.cs
  Migrations/Identity/
   20260503234640_InitialIdentitySchema.cs
@@ -94,7 +98,10 @@ obj/Debug/net10.0/
  FeatureFlags.RazorAssemblyInfo.cs
  ValidatableTypeAttribute.cs
 Program.cs
-Services/FeatureFlagConfirmationService.cs
+Services/
+ FeatureFlagConfirmationService.cs
+ IProjectPermissionService.cs
+ ProjectPermissionService.cs
 
 [metadataReferences]
 <DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.2/ref/net10.0/

@@ -3,6 +3,7 @@ using System;
 using FeatureFlags.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -10,9 +11,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace FeatureFlags.Data.Migrations.FeatureFlags
 {
     [DbContext(typeof(FeatureFlagDbContext))]
-    partial class FeatureFlagDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260504040641_AddProjectMemberRevocation")]
+    partial class AddProjectMemberRevocation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.7");
@@ -144,7 +147,7 @@ namespace FeatureFlags.Data.Migrations.FeatureFlags
                     b.Property<int>("ProjectId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<DateTime?>("RevokedAt")
+                    b.Property<DateTime>("RevokedAt")
                         .HasColumnType("TEXT");
 
                     b.Property<int>("Role")
