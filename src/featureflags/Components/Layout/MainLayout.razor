@@ -10,6 +10,11 @@
         <div class="top-row px-4 auth">
             <AuthorizeView>
                 <Authorized>
+                    <a class="btn btn-outline-secondary btn-sm me-2" href="/">Home</a>
+                </Authorized>
+            </AuthorizeView>
+            <AuthorizeView>
+                <Authorized>
                     <span class="me-3">@context.User.Identity?.Name</span>
                     <form method="post" action="/Identity/Account/Logout" class="d-inline">
                         <AntiforgeryToken />

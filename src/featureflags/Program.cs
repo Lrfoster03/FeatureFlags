@@ -62,7 +62,7 @@ app.MapGet("/api/featureflags", async (
     HttpContext http,
     FeatureFlagDbContext db) =>
 {
-    var clientKeyValue = http.Request.Headers["X-Client-Key"].FirstOrDefault();
+    var clientKeyValue = http.Request.Headers["X-API-Key"].FirstOrDefault();
 
     if (string.IsNullOrWhiteSpace(clientKeyValue))
         return Results.Unauthorized();

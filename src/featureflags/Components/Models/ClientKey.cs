@@ -8,8 +8,10 @@ public class ClientKey
     public ProjectEnvironment ProjectEnvironment { get; set; } = default!;
 
     public string Name { get; set; } = string.Empty;
+
     public string Key { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
     public DateTime? RevokedAt { get; set; }
 }

@@ -3,6 +3,7 @@
 @attribute [Authorize]
 
 @using System.Security.Claims
+@using System.Security.Cryptography
 @using FeatureFlags.Components.Models
 @using FeatureFlags.Data
 @using Microsoft.AspNetCore.Authorization
@@ -48,7 +49,7 @@
     <button class="btn btn-primary" @onclick="AddMember">Add Member</button>
 </div>
 
-<div class="card p-3">
+<div class="card p-3 mb-4">
     <h4>Members</h4>
 
     <table class="table">
@@ -74,22 +75,85 @@
     </table>
 </div>
 
+<div class="card p-3 mb-4">
+    <h4>API Keys</h4>
+    <p class="text-muted mb-3">
+        Public client keys identify this project environment when calling the feature flag API.
+    </p>
+
+    <div class="row g-3 align-items-end mb-3">
+        <div class="col-md-8">
+            <label class="form-label">Key Name</label>
+            <input class="form-control" @bind="newKeyName" placeholder="Local dev, production app, etc." />
+        </div>
+        <div class="col-md-4">
+            <button class="btn btn-primary w-100" @onclick="GenerateKey">Generate Key</button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(generatedKey))
+    {
+        <div class="alert alert-success">
+            <div class="fw-semibold mb-1">New key generated</div>
+            <div class="small mb-2">Copy this key for your SDK/client configuration.</div>
+            <code style="word-break: break-all;">@generatedKey</code>
+        </div>
+    }
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Key Name</th>
+                <th>Key</th>
+                <th>Created At</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var key in keys)
+            {
+                <tr>
+                    <td>@key.Name</td>
+                    <td><code>@key.Key</code></td>
+                    <td>@key.CreatedAt</td>
+                    <td>@(key.RevokedAt.HasValue ? key.RevokedAt.Value.ToString() : "Active")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
 @code {
     private int projectId;
+    private int environmentId;
     private string memberEmail = string.Empty;
     private ProjectRole selectedRole = ProjectRole.Viewer;
     private string? errorMessage;
     private string? successMessage;
     private List<ProjectMember> members = new();
+    private List<ClientKey> keys = new();
+    private string newKeyName = string.Empty;
+    private string? generatedKey;
 
     protected override async Task OnInitializedAsync()
     {
         var project = await Db.Projects.OrderBy(p => p.Id).FirstAsync();
         projectId = project.Id;
 
+        var environment = await Db.ProjectEnvironments
+            .Where(e => e.ProjectId == projectId)
+            .OrderBy(e => e.Id)
+            .FirstAsync();
+        environmentId = environment.Id;
+
         members = await Db.ProjectMembers
             .Where(m => m.ProjectId == projectId)
             .OrderBy(m => m.Role)
+            .ToListAsync();
+
+        keys = await Db.ClientKeys
+            .Where(k => k.ProjectEnvironment.ProjectId == projectId)
+            .OrderBy(k => k.CreatedAt)
             .ToListAsync();
     }
 
@@ -151,5 +215,68 @@
 
         memberEmail = string.Empty;
         successMessage = "Project member added.";
+
+        keys = await Db.ClientKeys
+            .Where(k => k.ProjectEnvironment.ProjectId == projectId)
+            .OrderBy(k => k.CreatedAt)
+            .ToListAsync();
+    }
+
+    private async Task GenerateKey()
+    {
+        errorMessage = null;
+        successMessage = null;
+        generatedKey = null;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var canManageKeys = await Db.ProjectMembers.AnyAsync(m =>
+            m.ProjectId == projectId &&
+            m.UserId == currentUserId &&
+            (m.Role == ProjectRole.Owner || m.Role == ProjectRole.Admin));
+
+        if (!canManageKeys)
+        {
+            errorMessage = "You do not have permission to manage API keys.";
+            return;
+        }
+
+        var keyValue = GeneratePublicClientKey();
+        var keyName = string.IsNullOrWhiteSpace(newKeyName)
+            ? "Client key"
+            : newKeyName.Trim();
+
+        Db.ClientKeys.Add(new ClientKey
+        {
+            ProjectEnvironmentId = environmentId,
+            Name = keyName,
+            Key = keyValue,
+            CreatedAt = DateTime.UtcNow
+        });
+
+        await Db.SaveChangesAsync();
+
+        generatedKey = keyValue;
+        newKeyName = string.Empty;
+        successMessage = "API key generated.";
+
+        keys = await Db.ClientKeys
+            .Where(k => k.ProjectEnvironment.ProjectId == projectId)
+            .OrderBy(k => k.CreatedAt)
+            .ToListAsync();
+    }
+
+    private static string GeneratePublicClientKey()
+    {
+        Span<byte> bytes = stackalloc byte[24];
+        RandomNumberGenerator.Fill(bytes);
+
+        var token = Convert.ToBase64String(bytes)
+            .Replace("+", "-", StringComparison.Ordinal)
+            .Replace("/", "_", StringComparison.Ordinal)
+            .Replace("=", string.Empty, StringComparison.Ordinal);
+
+        return $"ff_client_{token}";
     }
 }
