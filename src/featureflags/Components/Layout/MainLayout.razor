@@ -7,29 +7,27 @@
     </div> *@
 
     <main>
-        <div class="top-row px-4 auth">
+        <div class="top-row app-header">
+            <div class="app-header-left">
+                <a class="btn btn-outline-secondary btn-sm" href="/">Home</a>
+            </div>
+
             <AuthorizeView>
                 <Authorized>
-                    <a class="btn btn-outline-secondary btn-sm me-2" href="/">Home</a>
-                </Authorized>
-            </AuthorizeView>
-            <AuthorizeView>
-                <Authorized>
-                    <span class="me-3">@context.User.Identity?.Name</span>
-                    <form method="post" action="/Identity/Account/Logout" class="d-inline">
-                        <AntiforgeryToken />
-                        <button type="submit" class="btn btn-outline-secondary btn-sm">Logout</button>
-                    </form>
+                    <div class="app-header-right">
+                        <span class="user-email">@context.User.Identity?.Name</span>
+                        <form method="post" action="/Identity/Account/Logout" class="d-inline">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm">Logout</button>
+                        </form>
+                        <a class="btn btn-outline-secondary btn-sm" href="/settings">Settings</a>
+                    </div>
                 </Authorized>
                 <NotAuthorized>
-                    <a class="btn btn-outline-primary btn-sm me-2" href="/Identity/Account/Login">Login</a>
-                    <a class="btn btn-primary btn-sm" href="/Identity/Account/Register">Sign up</a>
+                    <div class="app-header-right">
+                        <a class="btn btn-outline-primary btn-sm" href="/Identity/Account/Login">Login</a>
+                        <a class="btn btn-primary btn-sm" href="/Identity/Account/Register">Sign up</a>
+                    </div>
                 </NotAuthorized>
-            </AuthorizeView>
-            <AuthorizeView>
-                <Authorized>
-                    <a class="btn btn-outline-secondary btn-sm me-2" href="/settings">Settings</a>
-                </Authorized>
             </AuthorizeView>
         </div>
 
