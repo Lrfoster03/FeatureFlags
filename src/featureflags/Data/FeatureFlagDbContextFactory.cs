@@ -15,7 +15,7 @@ public class FeatureFlagDbContextFactory : IDesignTimeDbContextFactory<FeatureFl
         var connectionString = Environment.GetEnvironmentVariable($"ConnectionStrings__{ConnectionStringName}")
             ?? DefaultConnectionString;
 
-        optionsBuilder.UseSqlite(connectionString);
+        optionsBuilder.UseNpgsql(connectionString);
 
         return new FeatureFlagDbContext(optionsBuilder.Options);
     }
