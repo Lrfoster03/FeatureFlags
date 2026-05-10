@@ -1,10 +1,6 @@
 services:
   featureflags:
-    volumes:
-      - dataprotection-keys:/root/.aspnet/DataProtection-Keys
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/lrfoster03/featureflags:latest
     restart: unless-stopped
     depends_on:
       - postgres
@@ -15,6 +11,8 @@ services:
       ConnectionStrings__Application: Host=postgres;Port=5432;Database=featureflags;Username=featureflags;Password=${POSTGRES_PASSWORD}
     expose:
       - "8080"
+    volumes:
+      - dataprotection-keys:/root/.aspnet/DataProtection-Keys
 
   postgres:
     image: postgres:16
