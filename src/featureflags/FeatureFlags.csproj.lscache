@@ -76,10 +76,8 @@ Data/
  FeatureFlagDbContext.cs
  FeatureFlagDbContextFactory.cs
  Migrations/FeatureFlags/
-  20260510220453_InitialFeatureFlagsPostgres.cs
-  20260510220453_InitialFeatureFlagsPostgres.Designer.cs
-  20260510233836_SyncPostgresFeatureFlagModel.cs
-  20260510233836_SyncPostgresFeatureFlagModel.Designer.cs
+  20260510235140_InitialFeatureFlagsPostgres.cs
+  20260510235140_InitialFeatureFlagsPostgres.Designer.cs
   FeatureFlagDbContextModelSnapshot.cs
  Migrations/Identity/
   20260510220449_InitialIdentityPostgres.cs

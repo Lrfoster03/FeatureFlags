@@ -6,7 +6,7 @@ namespace FeatureFlags.Data;
 public class FeatureFlagDbContextFactory : IDesignTimeDbContextFactory<FeatureFlagDbContext>
 {
     public const string ConnectionStringName = "FeatureFlags";
-    public const string DefaultConnectionString = "Data Source=featureflags.db";
+    public const string DefaultConnectionString = "Host=localhost;Port=5432;Database=featureflags;Username=featureflags;Password=featureflags";
 
     public FeatureFlagDbContext CreateDbContext(string[] args)
     {
