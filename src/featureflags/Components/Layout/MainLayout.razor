@@ -1,5 +1,11 @@
 ﻿@inherits LayoutComponentBase
+@using System.Security.Claims
+@using FeatureFlags.Components.Models
+@using FeatureFlags.Data
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject FeatureFlagDbContext Db
 @inject NavigationManager Navigation
 
 <div class="page">
@@ -10,7 +16,27 @@
     <main>
         <div class="top-row app-header">
             <div class="app-header-left">
-                <a class="btn btn-outline-secondary btn-sm" href="@HomeHref">Home</a>
+                <a class="btn btn-outline-secondary btn-sm" href="/projects">Home</a>
+                @if (availableProjects.Count > 0)
+                {
+                    <div class="dropdown project-switcher">
+                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                                data-bs-toggle="dropdown" aria-expanded="false">
+                            @CurrentProjectName
+                        </button>
+                        <ul class="dropdown-menu">
+                            @foreach (var project in availableProjects)
+                            {
+                                <li>
+                                    <a class="dropdown-item @(project.Id == CurrentProjectId ? "active" : null)"
+                                       href="@($"/projects/{project.Id}/home")">
+                                        @project.Name
+                                    </a>
+                                </li>
+                            }
+                        </ul>
+                    </div>
+                }
             </div>
 
             <AuthorizeView>
@@ -41,6 +67,24 @@
 </div>
 
 @code {
+    private List<Project> availableProjects = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrWhiteSpace(userId))
+            return;
+
+        availableProjects = await Db.ProjectMembers
+            .Where(m => m.UserId == userId && m.RevokedAt == null)
+            .Include(m => m.Project)
+            .OrderBy(m => m.Project.Name)
+            .Select(m => m.Project)
+            .ToListAsync();
+    }
+
     private string? CurrentProjectId
     {
         get
@@ -57,6 +101,9 @@
             return null;
         }
     }
+
+    private string CurrentProjectName =>
+        availableProjects.FirstOrDefault(p => p.Id == CurrentProjectId)?.Name ?? "Switch project";
 
     private string HomeHref => !string.IsNullOrWhiteSpace(CurrentProjectId)
         ? $"/projects/{CurrentProjectId}/home"
