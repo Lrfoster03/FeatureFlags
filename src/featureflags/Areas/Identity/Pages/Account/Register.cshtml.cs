@@ -30,17 +30,6 @@ public class RegisterModel(
 
         if (createResult.Succeeded)
         {
-            try
-            {
-                await _projectProvisioningService.CreateProjectForUserAsync(user);
-            }
-            catch (DbUpdateException)
-            {
-                await _userManager.DeleteAsync(user);
-                ModelState.AddModelError(string.Empty, "The account was created, but the default project could not be created.");
-                return Page();
-            }
-
             await _signInManager.SignInAsync(user, isPersistent: false);
             return LocalRedirect("/projects");
         }
