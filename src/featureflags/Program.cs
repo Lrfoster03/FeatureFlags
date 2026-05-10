@@ -18,13 +18,13 @@ var connectionString = builder.Configuration.GetConnectionString(FeatureFlagDbCo
     ?? FeatureFlagDbContextFactory.DefaultConnectionString;
 
 builder.Services.AddDbContext<FeatureFlagDbContext>(options =>
-    options.UseSqlite(connectionString));
+    options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IFeatureFlagConfirmationService, FeatureFlagConfirmationService>();
 builder.Services.AddScoped<IProjectPermissionService, ProjectPermissionService>();
 builder.Services.AddScoped<IProjectProvisioningService, ProjectProvisioningService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlite(connectionString));
+    options.UseNpgsql(connectionString));
 
 builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
@@ -95,16 +95,26 @@ app.MapGet("/api/featureflags", async (
 
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<FeatureFlagDbContext>();
+    var flagDb = scope.ServiceProvider.GetRequiredService<FeatureFlagDbContext>();
 
-    if (app.Environment.IsDevelopment() && db.Database.HasPendingModelChanges())
+    if (app.Environment.IsDevelopment() && flagDb.Database.HasPendingModelChanges())
     {
         throw new InvalidOperationException(
             "EF model changes detected without a migration. " +
             "Run: dotnet ef migrations add <Name> --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj");
     }
 
-    db.Database.Migrate();
+    flagDb.Database.Migrate();
+
+    var appDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    if (app.Environment.IsDevelopment() && appDb.Database.HasPendingModelChanges())
+    {
+        throw new InvalidOperationException(
+            "EF model changes detected without a migration. " +
+            "Run: dotnet ef migrations add <Name> --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj");
+    }
+
+    appDb.Database.Migrate();
 }
 
 

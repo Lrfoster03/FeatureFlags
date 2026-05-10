@@ -1,21 +1,17 @@
 using FeatureFlags.Data;
-using FeatureFlags.Services;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.ComponentModel.DataAnnotations;
-using Microsoft.EntityFrameworkCore;
 
 namespace FeatureFlags.Areas.Identity.Pages.Account;
 
 public class RegisterModel(
     UserManager<ApplicationUser> userManager,
-    SignInManager<ApplicationUser> signInManager,
-    IProjectProvisioningService projectProvisioningService) : PageModel
+    SignInManager<ApplicationUser> signInManager) : PageModel
 {
     private readonly UserManager<ApplicationUser> _userManager = userManager;
     private readonly SignInManager<ApplicationUser> _signInManager = signInManager;
-    private readonly IProjectProvisioningService _projectProvisioningService = projectProvisioningService;
 
     [BindProperty]
     public InputModel Input { get; set; } = new();

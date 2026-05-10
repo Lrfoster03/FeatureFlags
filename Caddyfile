@@ -1,0 +1,3 @@
+featureflags.logoas.xyz {
+    reverse_proxy featureflags:8080
+}

@@ -3,10 +3,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace FeatureFlags.Migrations.FeatureFlagDb
+namespace FeatureFlags.Data.Migrations.FeatureFlags
 {
     /// <inheritdoc />
-    public partial class InitialFeatureFlags : Migration
+    public partial class InitialFeatureFlagsPostgres : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -92,6 +92,29 @@ namespace FeatureFlags.Migrations.FeatureFlagDb
                 });
 
             migrationBuilder.CreateTable(
+                name: "Configs",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    ProjectEnvironmentId = table.Column<int>(type: "INTEGER", nullable: false),
+                    Name = table.Column<string>(type: "TEXT", nullable: false),
+                    Description = table.Column<string>(type: "TEXT", nullable: false),
+                    Schema = table.Column<string>(type: "TEXT", nullable: false),
+                    Value = table.Column<string>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_Configs", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_Configs_ProjectEnvironments_ProjectEnvironmentId",
+                        column: x => x.ProjectEnvironmentId,
+                        principalTable: "ProjectEnvironments",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "FeatureFlags",
                 columns: table => new
                 {
@@ -127,6 +150,12 @@ namespace FeatureFlags.Migrations.FeatureFlagDb
                 column: "ProjectEnvironmentId");
 
             migrationBuilder.CreateIndex(
+                name: "IX_Configs_ProjectEnvironmentId_Name",
+                table: "Configs",
+                columns: new[] { "ProjectEnvironmentId", "Name" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "IX_FeatureFlags_ProjectEnvironmentId_Name",
                 table: "FeatureFlags",
                 columns: new[] { "ProjectEnvironmentId", "Name" },
@@ -156,6 +185,9 @@ namespace FeatureFlags.Migrations.FeatureFlagDb
         {
             migrationBuilder.DropTable(
                 name: "ClientKeys");
+
+            migrationBuilder.DropTable(
+                name: "Configs");
 
             migrationBuilder.DropTable(
                 name: "FeatureFlags");

@@ -3,19 +3,16 @@ using System;
 using FeatureFlags.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace FeatureFlags.Migrations.FeatureFlagDb
+namespace FeatureFlags.Data.Migrations.FeatureFlags
 {
     [DbContext(typeof(FeatureFlagDbContext))]
-    [Migration("20260510064235_AddFeatureConfigs")]
-    partial class AddFeatureConfigs
+    partial class FeatureFlagDbContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.7");
@@ -69,6 +66,10 @@ namespace FeatureFlags.Migrations.FeatureFlagDb
 
                     b.Property<int>("ProjectEnvironmentId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("Schema")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Value")
                         .IsRequired()

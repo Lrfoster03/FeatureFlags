@@ -59,4 +59,4 @@ nunit-*.xml
 coveragereport/
 
 # Env file
-.env
+*.env*
