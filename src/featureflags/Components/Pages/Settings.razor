@@ -1,4 +1,4 @@
-@page "/settings"
+@page "/projects/{ProjectId}/settings"
 @rendermode InteractiveServer
 @attribute [Authorize]
 
@@ -166,7 +166,10 @@
 </div>
 
 @code {
-    private int projectId;
+    [Parameter]
+    public string ProjectId { get; set; } = string.Empty;
+
+    private string projectId = string.Empty;
     private int environmentId;
     private string memberEmail = string.Empty;
     private ProjectRole selectedRole = ProjectRole.Viewer;
@@ -179,13 +182,38 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var project = await Db.Projects.OrderBy(p => p.Id).FirstAsync();
-        projectId = project.Id;
+        projectId = ProjectId;
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        var canViewProject = await PermissionService.CanViewProjectAsync(projectId, currentUserId);
+        if (!canViewProject)
+        {
+            errorMessage = "You do not have permission to view this project.";
+            return;
+        }
+
+        var project = await Db.Projects
+            .Where(p => p.Id == projectId)
+            .FirstOrDefaultAsync();
+
+        if (project is null)
+        {
+            errorMessage = "Project was not found.";
+            return;
+        }
 
         var environment = await Db.ProjectEnvironments
             .Where(e => e.ProjectId == projectId)
             .OrderBy(e => e.Id)
-            .FirstAsync();
+            .FirstOrDefaultAsync();
+
+        if (environment is null)
+        {
+            errorMessage = "Project environment was not found.";
+            return;
+        }
         environmentId = environment.Id;
 
         members = await Db.ProjectMembers

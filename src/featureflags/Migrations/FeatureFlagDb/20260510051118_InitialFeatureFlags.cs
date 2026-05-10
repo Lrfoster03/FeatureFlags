@@ -3,25 +3,24 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace FeatureFlags.Data.Migrations.FeatureFlags
+namespace FeatureFlags.Migrations.FeatureFlagDb
 {
     /// <inheritdoc />
-    public partial class InitialFeatureFlagSchema : Migration
+    public partial class InitialFeatureFlags : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.CreateTable(
-                name: "Project",
+                name: "Projects",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
+                    Id = table.Column<string>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Project", x => x.Id);
+                    table.PrimaryKey("PK_Projects", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -30,16 +29,41 @@ namespace FeatureFlags.Data.Migrations.FeatureFlags
                 {
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    ProjectId = table.Column<int>(type: "INTEGER", nullable: false),
+                    ProjectId = table.Column<string>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_ProjectEnvironments", x => x.Id);
                     table.ForeignKey(
-                        name: "FK_ProjectEnvironments_Project_ProjectId",
+                        name: "FK_ProjectEnvironments_Projects_ProjectId",
                         column: x => x.ProjectId,
-                        principalTable: "Project",
+                        principalTable: "Projects",
+                        principalColumn: "Id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
+                name: "ProjectMembers",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    UserId = table.Column<string>(type: "TEXT", nullable: false),
+                    Email = table.Column<string>(type: "TEXT", nullable: false),
+                    DisplayName = table.Column<string>(type: "TEXT", nullable: false),
+                    ProjectId = table.Column<string>(type: "TEXT", nullable: false),
+                    Role = table.Column<int>(type: "INTEGER", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    RevokedAt = table.Column<DateTime>(type: "TEXT", nullable: true)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_ProjectMembers", x => x.Id);
+                    table.ForeignKey(
+                        name: "FK_ProjectMembers_Projects_ProjectId",
+                        column: x => x.ProjectId,
+                        principalTable: "Projects",
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
@@ -109,15 +133,21 @@ namespace FeatureFlags.Data.Migrations.FeatureFlags
                 unique: true);
 
             migrationBuilder.CreateIndex(
-                name: "IX_Project_Name",
-                table: "Project",
-                column: "Name",
-                unique: true);
-
-            migrationBuilder.CreateIndex(
                 name: "IX_ProjectEnvironments_ProjectId_Name",
                 table: "ProjectEnvironments",
                 columns: new[] { "ProjectId", "Name" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_ProjectMembers_ProjectId_UserId",
+                table: "ProjectMembers",
+                columns: new[] { "ProjectId", "UserId" },
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Projects_Name",
+                table: "Projects",
+                column: "Name",
                 unique: true);
         }
 
@@ -131,10 +161,13 @@ namespace FeatureFlags.Data.Migrations.FeatureFlags
                 name: "FeatureFlags");
 
             migrationBuilder.DropTable(
+                name: "ProjectMembers");
+
+            migrationBuilder.DropTable(
                 name: "ProjectEnvironments");
 
             migrationBuilder.DropTable(
-                name: "Project");
+                name: "Projects");
         }
     }
 }

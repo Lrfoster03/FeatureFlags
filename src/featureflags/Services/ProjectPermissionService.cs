@@ -6,19 +6,19 @@ namespace FeatureFlags.Services;
 
 public class ProjectPermissionService(FeatureFlagDbContext db) : IProjectPermissionService
 {
-    public Task<bool> CanViewProjectAsync(int projectId, string? userId)
+    public Task<bool> CanViewProjectAsync(string projectId, string? userId)
         => HasRole(projectId, userId, ProjectRole.Viewer, ProjectRole.Editor, ProjectRole.Admin, ProjectRole.Owner);
 
-    public Task<bool> CanEditFlagsAsync(int projectId, string? userId)
+    public Task<bool> CanEditFlagsAsync(string projectId, string? userId)
         => HasRole(projectId, userId, ProjectRole.Editor, ProjectRole.Admin, ProjectRole.Owner);
 
-    public Task<bool> CanManageMembersAsync(int projectId, string? userId)
+    public Task<bool> CanManageMembersAsync(string projectId, string? userId)
         => HasRole(projectId, userId, ProjectRole.Admin, ProjectRole.Owner);
 
-    public Task<bool> CanManageKeysAsync(int projectId, string? userId)
+    public Task<bool> CanManageKeysAsync(string projectId, string? userId)
         => HasRole(projectId, userId, ProjectRole.Admin, ProjectRole.Owner);
 
-    private Task<bool> HasRole(int projectId, string? userId, params ProjectRole[] roles)
+    private Task<bool> HasRole(string projectId, string? userId, params ProjectRole[] roles)
     {
         if (string.IsNullOrWhiteSpace(userId))
             return Task.FromResult(false);

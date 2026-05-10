@@ -1,0 +1,151 @@
+@page "/projects"
+@rendermode InteractiveServer
+@attribute [Authorize]
+
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using FeatureFlags.Components.Models
+@using FeatureFlags.Data
+@using FeatureFlags.Services
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+
+@inject FeatureFlagDbContext Db
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject UserManager<ApplicationUser> UserManager
+@inject IProjectProvisioningService ProjectProvisioningService
+
+<PageTitle>Projects</PageTitle>
+
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+    <div>
+        <h1 class="mb-1">Projects</h1>
+        <p class="text-muted mb-0">Choose a project or create a new project id.</p>
+    </div>
+
+    <EditForm Model="newProjectInput" OnValidSubmit="CreateProjectAsync" class="project-create-form">
+        <DataAnnotationsValidator />
+        <div class="input-group">
+            <InputText class="form-control" @bind-Value="newProjectInput.Name" placeholder="New project name" />
+            <button type="submit" class="btn btn-primary" disabled="@isCreatingProject">
+                @(isCreatingProject ? "Creating..." : "Create project")
+            </button>
+        </div>
+        <ValidationMessage For="() => newProjectInput.Name" />
+    </EditForm>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(successMessage))
+{
+    <div class="alert alert-success">@successMessage</div>
+}
+
+@if (projects.Count == 0)
+{
+    <div class="alert alert-info">
+        You are not currently a member of any projects.
+    </div>
+}
+else
+{
+    <div class="list-group">
+        @foreach (var project in projects)
+        {
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+               href="@($"/projects/{project.Id}/home")">
+                <span>@project.Name</span>
+                <span class="badge bg-secondary">@project.Id</span>
+            </a>
+        }
+    </div>
+}
+
+@code {
+    private string? errorMessage;
+    private string? successMessage;
+    private List<Project> projects = new();
+    private NewProjectInput newProjectInput = new();
+    private bool isCreatingProject;
+    private string? currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrWhiteSpace(currentUserId))
+        {
+            Navigation.NavigateTo("/Identity/Account/Login?returnUrl=/projects", forceLoad: true);
+            return;
+        }
+
+        await LoadProjectsAsync();
+    }
+
+    private async Task LoadProjectsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(currentUserId))
+        {
+            projects = new();
+            return;
+        }
+
+        projects = await Db.ProjectMembers
+            .Where(m => m.UserId == currentUserId && m.RevokedAt == null)
+            .Include(m => m.Project)
+            .OrderBy(m => m.Project.Name)
+            .Select(m => m.Project)
+            .ToListAsync();
+    }
+
+    private async Task CreateProjectAsync()
+    {
+        errorMessage = null;
+        successMessage = null;
+
+        if (string.IsNullOrWhiteSpace(currentUserId))
+        {
+            Navigation.NavigateTo("/Identity/Account/Login?returnUrl=/projects", forceLoad: true);
+            return;
+        }
+
+        var user = await UserManager.FindByIdAsync(currentUserId);
+        if (user is null)
+        {
+            errorMessage = "Could not find the signed-in user.";
+            return;
+        }
+
+        isCreatingProject = true;
+        try
+        {
+            var project = await ProjectProvisioningService.CreateProjectForUserAsync(user, newProjectInput.Name);
+            newProjectInput = new();
+            successMessage = $"Created project '{project.Name}' with id {project.Id}.";
+            await LoadProjectsAsync();
+        }
+        catch (DbUpdateException)
+        {
+            errorMessage = $"A project named '{newProjectInput.Name.Trim()}' already exists.";
+        }
+        finally
+        {
+            isCreatingProject = false;
+        }
+    }
+
+    private sealed class NewProjectInput
+    {
+        [Required]
+        [StringLength(120)]
+        public string Name { get; set; } = string.Empty;
+    }
+}

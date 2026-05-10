@@ -21,6 +21,7 @@ builder.Services.AddDbContext<FeatureFlagDbContext>(options =>
     options.UseSqlite(connectionString));
 builder.Services.AddScoped<IFeatureFlagConfirmationService, FeatureFlagConfirmationService>();
 builder.Services.AddScoped<IProjectPermissionService, ProjectPermissionService>();
+builder.Services.AddScoped<IProjectProvisioningService, ProjectProvisioningService>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString));
@@ -99,23 +100,6 @@ using (var scope = app.Services.CreateScope())
     }
 
     db.Database.Migrate();
-    if (!db.Projects.Any())
-{
-    var project = new Project
-    {
-        Name = "Default Project",
-        Environments =
-        [
-            new ProjectEnvironment
-            {
-                Name = "Development"
-            }
-        ]
-    };
-
-    db.Projects.Add(project);
-    db.SaveChanges();
-}
 }
 
 

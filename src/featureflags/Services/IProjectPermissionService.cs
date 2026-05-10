@@ -4,8 +4,8 @@ namespace FeatureFlags.Services;
 
 public interface IProjectPermissionService
 {
-    Task<bool> CanViewProjectAsync(int projectId, string? userId);
-    Task<bool> CanEditFlagsAsync(int projectId, string? userId);
-    Task<bool> CanManageMembersAsync(int projectId, string? userId);
-    Task<bool> CanManageKeysAsync(int projectId, string? userId);
+    Task<bool> CanViewProjectAsync(string projectId, string? userId);
+    Task<bool> CanEditFlagsAsync(string projectId, string? userId);
+    Task<bool> CanManageMembersAsync(string projectId, string? userId);
+    Task<bool> CanManageKeysAsync(string projectId, string? userId);
 }

@@ -3,10 +3,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace FeatureFlags.Data.Migrations.Identity
+namespace FeatureFlags.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialIdentitySchema : Migration
+    public partial class InitialIdentity : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

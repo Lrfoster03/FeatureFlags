@@ -1,4 +1,4 @@
-﻿@page "/"
+﻿@page "/projects/{ProjectId}/home"
 @rendermode InteractiveServer
 @using FeatureFlags.Components.Models
 @using FeatureFlags.Components.Shared
@@ -14,6 +14,8 @@
 @inject IFeatureFlagConfirmationService ConfirmationService
 @inject IProjectPermissionService PermissionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+
+@inject NavigationManager Navigation
 
 @attribute [Authorize]
 
@@ -47,6 +49,8 @@
 <ConfirmDialog @ref="confirmDialog" />
 
 @code {
+    [Parameter]
+    public string ProjectId { get; set; } = string.Empty;
     private List<FeatureFlag> itemList = new();
     private string? errorMessage;
     private ConfirmDialog confirmDialog = default!;
@@ -56,52 +60,62 @@
 
     protected override async Task OnInitializedAsync()
     {
+        errorMessage = null;
+
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
 
-        if (userId is null)
+        if (string.IsNullOrWhiteSpace(userId))
         {
+            var returnUrl = Uri.EscapeDataString($"/projects/{ProjectId}/home");
+            Navigation.NavigateTo($"/Identity/Account/Login?returnUrl={returnUrl}", forceLoad: true);
             return;
         }
 
-        this.project = await Db.Projects
+        project = await Db.Projects
             .Include(p => p.Environments)
-            .FirstAsync();
+            .FirstOrDefaultAsync(p => p.Id == ProjectId);
 
-        this.environment = project.Environments.FirstOrDefault() ?? throw new Exception("No project environment found.");
+        if (project is null)
+        {
+            errorMessage = "Project was not found.";
+            return;
+        }
 
         var isMember = await Db.ProjectMembers
-                    .AnyAsync(m => m.ProjectId == project.Id && m.UserId == userId);
+            .AnyAsync(m =>
+                m.ProjectId == project.Id &&
+                m.UserId == userId &&
+                m.RevokedAt == null);
 
         if (!isMember)
         {
-            Db.ProjectMembers.Add(new ProjectMember
-            {
-                ProjectId = project.Id,
-                UserId = userId,
-                Email = authState.User.FindFirstValue(ClaimTypes.Email)
-                    ?? authState.User.Identity?.Name
-                    ?? string.Empty,
-                DisplayName = authState.User.Identity?.Name
-                    ?? authState.User.FindFirstValue(ClaimTypes.Email)
-                    ?? string.Empty,
-                Role = this.project.Members.Count == 0 ? ProjectRole.Owner : ProjectRole.Editor
-            });
-
-            await Db.SaveChangesAsync();
+            errorMessage = "403: You do not have permission to access this project.";
+            return;
         }
 
-        itemList = await Db.FeatureFlags
-                    .Where(f => f.ProjectEnvironment.ProjectId == project.Id)
-                    .ToListAsync();
+        environment = project.Environments.FirstOrDefault();
+
+        if (environment is null)
+        {
+            errorMessage = "No project environment found for this project.";
+            return;
+        }
+
+        await ReloadFlagsAsync();
     }
 
     private async Task<bool> EnsureCanEditAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (project is null)
+        {
+            errorMessage = "Project was not loaded.";
+            return false;
+        }
 
-        var canEdit = await PermissionService.CanEditFlagsAsync(this.project.Id, currentUserId);
+        var canEdit = await PermissionService.CanEditFlagsAsync(project.Id, currentUserId);
 
         if (!canEdit)
         {
@@ -114,8 +128,14 @@
 
     private async Task ReloadFlagsAsync()
     {
+        if (environment is null)
+        {
+            itemList = new();
+            return;
+        }
+
         itemList = await Db.FeatureFlags
-            .Where(f => f.ProjectEnvironmentId == this.environment!.Id)
+            .Where(f => f.ProjectEnvironmentId == environment.Id)
             .OrderBy(f => f.Name)
             .ToListAsync();
     }
@@ -140,7 +160,7 @@
             Description = "",
             IsEnabled = false,
             PercentageRollout = 0,
-            ProjectEnvironmentId = this.environment!.Id
+            ProjectEnvironmentId = environment.Id
         };
 
         Db.FeatureFlags.Add(newItem);

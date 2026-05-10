@@ -3,19 +3,16 @@ using System;
 using FeatureFlags.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace FeatureFlags.Data.Migrations.FeatureFlags
+namespace FeatureFlags.Migrations.FeatureFlagDb
 {
     [DbContext(typeof(FeatureFlagDbContext))]
-    [Migration("20260504014649_AddProjectMemberDisplayFields")]
-    partial class AddProjectMemberDisplayFields
+    partial class FeatureFlagDbContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.7");
@@ -90,9 +87,8 @@ namespace FeatureFlags.Data.Migrations.FeatureFlags
 
             modelBuilder.Entity("FeatureFlags.Components.Models.Project", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -116,8 +112,9 @@ namespace FeatureFlags.Data.Migrations.FeatureFlags
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("ProjectId")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("ProjectId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.HasKey("Id");
 
@@ -144,8 +141,12 @@ namespace FeatureFlags.Data.Migrations.FeatureFlags
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("ProjectId")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("ProjectId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("Role")
                         .HasColumnType("INTEGER");

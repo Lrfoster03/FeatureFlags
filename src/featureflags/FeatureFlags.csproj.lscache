@@ -55,6 +55,9 @@ TemporaryDependencyNodeTargetIdentifier=net10.0
 /warnaserror+:NU1605,SYSLIB0011
 
 [sourceFiles]
+Areas/Identity/Pages/Account/
+ Login.cshtml.cs
+ Register.cshtml.cs
 Components/Models/
  ClientKey.cs
  FeatureFlag.cs
@@ -70,26 +73,14 @@ Data/
  ApplicationUser.cs
  FeatureFlagDbContext.cs
  FeatureFlagDbContextFactory.cs
- Migrations/FeatureFlags/
-  20260503234633_InitialFeatureFlagSchema.cs
-  20260503234633_InitialFeatureFlagSchema.Designer.cs
-  20260504011227_Projects.cs
-  20260504011227_Projects.Designer.cs
-  20260504013939_AddProjectMembers.cs
-  20260504013939_AddProjectMembers.Designer.cs
-  20260504014649_AddProjectMemberDisplayFields.cs
-  20260504014649_AddProjectMemberDisplayFields.Designer.cs
-  20260504015820_AddClientKeys.cs
-  20260504015820_AddClientKeys.Designer.cs
-  20260504040641_AddProjectMemberRevocation.cs
-  20260504040641_AddProjectMemberRevocation.Designer.cs
-  20260504043357_AddRevocationAndPermissionUpdates.cs
-  20260504043357_AddRevocationAndPermissionUpdates.Designer.cs
+Migrations/
+ 20260510051115_InitialIdentity.cs
+ 20260510051115_InitialIdentity.Designer.cs
+ ApplicationDbContextModelSnapshot.cs
+ FeatureFlagDb/
+  20260510051118_InitialFeatureFlags.cs
+  20260510051118_InitialFeatureFlags.Designer.cs
   FeatureFlagDbContextModelSnapshot.cs
- Migrations/Identity/
-  20260503234640_InitialIdentitySchema.cs
-  20260503234640_InitialIdentitySchema.Designer.cs
-  ApplicationDbContextModelSnapshot.cs
 obj/Debug/net10.0/
  .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
  EmbeddedAttribute.cs
@@ -101,7 +92,9 @@ Program.cs
 Services/
  FeatureFlagConfirmationService.cs
  IProjectPermissionService.cs
+ IProjectProvisioningService.cs
  ProjectPermissionService.cs
+ ProjectProvisioningService.cs
 
 [metadataReferences]
 <DOTNET>/packs/Microsoft.AspNetCore.App.Ref/10.0.2/ref/net10.0/
@@ -532,6 +525,10 @@ Services/
 obj/Debug/net10.0/FeatureFlags.GeneratedMSBuildEditorConfig.editorconfig
 
 [additionalFiles]
+Areas/Identity/Pages/Account/
+ Login.cshtml
+ Register.cshtml
+Areas/Identity/Pages/_ViewImports.cshtml
 Components/
  App.razor
  Layout/
@@ -542,6 +539,7 @@ Components/
   Error.razor
   Home.razor
   NotFound.razor
+  Projects.razor
   Settings.razor
  Routes.razor
  Shared/Pill.razor
@@ -551,6 +549,10 @@ Pages/
  _ViewImports.cshtml
 
 [dynamicFiles]
+Areas/Identity/Pages/Account/
+ Login.cshtml
+ Register.cshtml
+Areas/Identity/Pages/_ViewImports.cshtml
 Components/
  App.razor
  Layout/
@@ -561,6 +563,7 @@ Components/
   Error.razor
   Home.razor
   NotFound.razor
+  Projects.razor
   Settings.razor
  Routes.razor
  Shared/Pill.razor

@@ -10,7 +10,7 @@ public class ProjectMember
 
     public string DisplayName { get; set; } = string.Empty;
 
-    public int ProjectId { get; set; }
+    public string ProjectId { get; set; } = string.Empty;
     public Project Project { get; set; } = default!;
 
     public ProjectRole Role { get; set; } = ProjectRole.Viewer;
