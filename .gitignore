@@ -57,3 +57,6 @@ nunit-*.xml
 *.db*
 
 coveragereport/
+
+# Env file
+.env
