@@ -1,0 +1,79 @@
+.feature-pill {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    overflow: hidden;
+    padding: 0;
+}
+
+.feature-pill.collapsed {
+    border-radius: 999px !important;
+}
+
+.feature-pill.expanded {
+    border-radius: 2rem !important;
+}
+
+.pill-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.85rem 1.25rem;
+    cursor: pointer;
+}
+
+.pill-title {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pill-body {
+    padding: 0 1.25rem 1.25rem 1.25rem;
+}
+
+.config-json-input {
+    min-height: 12rem;
+    border: 0;
+    border-radius: 0;
+    resize: vertical;
+    line-height: 1.45;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+}
+
+.config-json-input:focus {
+    box-shadow: none;
+}
+
+.json-editor {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    overflow: hidden;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background: var(--bs-body-bg);
+}
+
+.json-editor.is-invalid {
+    border-color: var(--bs-form-invalid-border-color);
+}
+
+.json-editor-lines {
+    min-width: 3rem;
+    margin: 0;
+    padding: 0.375rem 0.75rem;
+    color: var(--bs-secondary-color);
+    text-align: right;
+    user-select: none;
+    background: var(--bs-tertiary-bg);
+    border-right: 1px solid var(--bs-border-color);
+    line-height: 1.45;
+}
+
+.json-editor textarea {
+    min-width: 0;
+}

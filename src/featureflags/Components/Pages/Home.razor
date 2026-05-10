@@ -21,20 +21,59 @@
 
 <PageTitle>Feature Flags</PageTitle>
 
-<div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
-    <h1 style="margin: 0;">Feature Flags</h1>
-    <button class="btn btn-primary" @onclick="AddItem">Add Flag</button>
-</div>
 
 <div style="overflow-y: scroll;">
-    <ul class="list-group">
-        @foreach (var item in itemList)
-        {
-            <div style="padding: 0.5rem; border-radius: 0.25rem;">
-                <Pill FeatureFlag="item" OnChanged="SaveFeatureFlag" OnDelete="DeleteFeatureFlag" />
+    <section class="mb-4">
+        <div class="d-flex align-items-center justify-content-between px-2">
+            <h1 style="margin: 0;">Feature Flags</h1>
+            <div class="gap-2">
+                <span class="badge bg-secondary">@featureFlags.Count</span>
+                <button class="btn btn-primary" @onclick="AddFlag">Add Flag</button>
             </div>
+        </div>
+
+        @if (featureFlags.Count == 0)
+        {
+            <div class="alert alert-info mt-3 mb-0">No feature flags have been created for this project.</div>
         }
-    </ul>
+        else
+        {
+            <ul class="list-group">
+                @foreach (var flag in featureFlags)
+                {
+                    <div style="padding: 0.5rem; border-radius: 0.25rem;">
+                        <FlagPill FeatureFlag="flag" OnChanged="SaveFeatureFlag" OnDelete="DeleteFeatureFlag" />
+                    </div>
+                }
+            </ul>
+        }
+    </section>
+
+    <section>
+        <div class="d-flex align-items-center justify-content-between px-2">
+            <h1 style="margin: 0;">Configs</h1>
+            <div class="gap-2">
+                <span class="badge bg-secondary">@featureConfigs.Count</span>
+                <button class="btn btn-primary" @onclick="AddConfig">Add Config</button>
+            </div>
+        </div>
+
+        @if (featureConfigs.Count == 0)
+        {
+            <div class="alert alert-info mt-3 mb-0">No configs have been created for this project.</div>
+        }
+        else
+        {
+            <ul class="list-group">
+                @foreach (var config in featureConfigs)
+                {
+                    <div style="padding: 0.5rem; border-radius: 0.25rem;">
+                        <ConfigPill Config="config" OnChanged="SaveFeatureConfig" OnDelete="DeleteFeatureConfig" />
+                    </div>
+                }
+            </ul>
+        }
+    </section>
 </div>
 
 @if (!string.IsNullOrWhiteSpace(errorMessage))
@@ -51,7 +90,8 @@
 @code {
     [Parameter]
     public string ProjectId { get; set; } = string.Empty;
-    private List<FeatureFlag> itemList = new();
+    private List<FeatureFlag> featureFlags = new();
+    private List<FeatureConfig> featureConfigs = new();
     private string? errorMessage;
     private ConfirmDialog confirmDialog = default!;
 
@@ -102,7 +142,7 @@
             return;
         }
 
-        await ReloadFlagsAsync();
+        await ReloadConfigsAsync();
     }
 
     private async Task<bool> EnsureCanEditAsync()
@@ -126,21 +166,27 @@
         return true;
     }
 
-    private async Task ReloadFlagsAsync()
+    private async Task ReloadConfigsAsync()
     {
         if (environment is null)
         {
-            itemList = new();
+            featureFlags = new();
+            featureConfigs = new();
             return;
         }
 
-        itemList = await Db.FeatureFlags
+        featureFlags = await Db.FeatureFlags
             .Where(f => f.ProjectEnvironmentId == environment.Id)
             .OrderBy(f => f.Name)
             .ToListAsync();
+
+        featureConfigs = await Db.Configs
+            .Where(c => c.ProjectEnvironmentId == environment.Id)
+            .OrderBy(c => c.Name)
+            .ToListAsync();
     }
 
-    private async Task AddItem()
+    private async Task AddFlag()
     {
         if (!await EnsureCanEditAsync())
             return;
@@ -156,7 +202,7 @@
 
         var newItem = new FeatureFlag
         {
-            Name = $"Item {itemList.Count + 1}",
+            Name = $"Item {featureFlags.Count + 1}",
             Description = "",
             IsEnabled = false,
             PercentageRollout = 0,
@@ -166,9 +212,39 @@
         Db.FeatureFlags.Add(newItem);
         await Db.SaveChangesAsync();
 
-        itemList.Add(newItem);
+        featureFlags.Add(newItem);
 
-        await ReloadFlagsAsync();
+        await ReloadConfigsAsync();
+    }
+
+    private async Task AddConfig()
+    {
+        if (!await EnsureCanEditAsync())
+            return;
+
+        errorMessage = null;
+
+
+        if (this.environment is null)
+        {
+            errorMessage = "No project environment exists. Create a project environment first.";
+            return;
+        }
+
+        var newItem = new FeatureConfig(
+        )
+        {
+            Name = $"Config {featureConfigs.Count + 1}",
+            Description = "",
+            ProjectEnvironmentId = environment.Id
+        };
+
+        Db.Configs.Add(newItem);
+        await Db.SaveChangesAsync();
+
+        featureConfigs.Add(newItem);
+
+        await ReloadConfigsAsync();
     }
 
     private async Task SaveFeatureFlag(FeatureFlag featureFlag)
@@ -202,7 +278,7 @@
             errorMessage = $"A feature flag named '{featureFlag.Name}' already exists.";
         }
 
-        await ReloadFlagsAsync();
+        await ReloadConfigsAsync();
     }
 
     private async Task DeleteFeatureFlag(FeatureFlag featureFlag)
@@ -230,13 +306,83 @@
             Db.FeatureFlags.Remove(existing);
             await Db.SaveChangesAsync();
 
-            itemList.RemoveAll(f => f.Id == featureFlag.Id);
+            featureFlags.RemoveAll(f => f.Id == featureFlag.Id);
         }
         catch (Exception)
         {
             errorMessage = $"Failed to delete feature flag '{featureFlag.Name}'.";
         }
 
-        await ReloadFlagsAsync();
+        await ReloadConfigsAsync();
+    }
+
+
+    private async Task SaveFeatureConfig(FeatureConfig featureConfig)
+    {
+        if (!await EnsureCanEditAsync())
+            return;
+
+        errorMessage = null;
+
+        featureConfig.Name = featureConfig.Name.Trim();
+
+        var duplicateExists = await Db.Configs
+            .AnyAsync(f =>
+                f.ProjectEnvironmentId == featureConfig.ProjectEnvironmentId &&
+                f.Name == featureConfig.Name &&
+                f.Id != featureConfig.Id);
+
+        if (duplicateExists)
+        {
+            errorMessage = $"A feature config named '{featureConfig.Name}' already exists.";
+            return;
+        }
+
+        try
+        {
+            Db.Configs.Update(featureConfig);
+            await Db.SaveChangesAsync();
+        }
+        catch (DbUpdateException)
+        {
+            errorMessage = $"A feature config named '{featureConfig.Name}' already exists.";
+        }
+
+        await ReloadConfigsAsync();
+    }
+
+    private async Task DeleteFeatureConfig(FeatureConfig featureConfig)
+    {
+        if (!await EnsureCanEditAsync())
+            return;
+
+        errorMessage = null;
+
+        var confirmed = await ConfirmationService.ConfirmDeleteAsync(confirmDialog, featureConfig.Name);
+
+        if (!confirmed)
+            return;
+
+        try
+        {
+            var existing = await Db.Configs.FindAsync(featureConfig.Id);
+
+            if (existing is null)
+            {
+                errorMessage = $"Feature config '{featureConfig.Name}' was not found.";
+                return;
+            }
+
+            Db.Configs.Remove(existing);
+            await Db.SaveChangesAsync();
+
+            featureConfigs.RemoveAll(f => f.Id == featureConfig.Id);
+        }
+        catch (Exception)
+        {
+            errorMessage = $"Failed to delete feature config '{featureConfig.Name}'.";
+        }
+
+        await ReloadConfigsAsync();
     }
 }

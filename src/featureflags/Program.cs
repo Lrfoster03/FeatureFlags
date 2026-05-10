@@ -85,6 +85,11 @@ app.MapGet("/api/featureflags", async (
 
     var response = Evaluator.Evaluate(flags, userId);
 
+    response.Configs = await db.Configs
+        .Where(c => c.ProjectEnvironmentId == clientKey.ProjectEnvironmentId)
+        .OrderBy(c => c.Name)
+        .ToDictionaryAsync(c => c.Name, c => c.Value);
+
     return Results.Ok(response);
 });
 

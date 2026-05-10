@@ -12,7 +12,7 @@ public static class Evaluator
         {
             FeatureFlags = flags.ToDictionary(
                 flag => flag.Name,
-                flag => EvaluateFlag(flag, userId))
+                flag => EvaluateFlag(flag, userId)),
         };
 
         return response;

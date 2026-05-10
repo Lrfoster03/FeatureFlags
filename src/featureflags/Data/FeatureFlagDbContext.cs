@@ -1,5 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using FeatureFlags.Components.Models;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace FeatureFlags.Data;
 
@@ -7,6 +10,8 @@ public class FeatureFlagDbContext(DbContextOptions<FeatureFlagDbContext> options
 {
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
+
+    public DbSet<FeatureConfig> Configs => Set<FeatureConfig>();
 
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
 
@@ -27,6 +32,24 @@ public class FeatureFlagDbContext(DbContextOptions<FeatureFlagDbContext> options
     modelBuilder.Entity<FeatureFlag>()
         .HasIndex(f => new { f.ProjectEnvironmentId, f.Name })
         .IsUnique();
+    
+    modelBuilder.Entity<FeatureConfig>()
+        .HasIndex(f => new { f.ProjectEnvironmentId, f.Name })
+        .IsUnique();
+
+    modelBuilder.Entity<FeatureConfig>()
+        .Property(c => c.Value)
+        .HasConversion(
+            value => value.ToJsonString(JsonStorageOptions),
+            value => ParseJsonObject(value))
+        .Metadata.SetValueComparer(JsonObjectComparer);
+
+    modelBuilder.Entity<FeatureConfig>()
+        .Property(c => c.Schema)
+        .HasConversion(
+            value => value.ToJsonString(JsonStorageOptions),
+            value => ParseJsonObject(value))
+        .Metadata.SetValueComparer(JsonObjectComparer);
 
     modelBuilder.Entity<ClientKey>()
         .HasIndex(k => k.Key)
@@ -41,4 +64,21 @@ modelBuilder.Entity<ProjectMember>()
     .WithMany(p => p.Members)
     .HasForeignKey(m => m.ProjectId);
 }
+
+    private static readonly JsonSerializerOptions JsonStorageOptions = new(JsonSerializerDefaults.Web);
+
+    private static readonly ValueComparer<JsonObject> JsonObjectComparer = new(
+        (left, right) => JsonNode.DeepEquals(left, right),
+        value => value.ToJsonString(JsonStorageOptions).GetHashCode(StringComparison.Ordinal),
+        value => CloneJsonObject(value));
+
+    private static JsonObject ParseJsonObject(string value)
+    {
+        return JsonNode.Parse(value)?.AsObject() ?? new JsonObject();
+    }
+
+    private static JsonObject CloneJsonObject(JsonObject value)
+    {
+        return ParseJsonObject(value.ToJsonString(JsonStorageOptions));
+    }
 }

@@ -1,6 +1,6 @@
 namespace FeatureFlags.Components.Models;
 
-public class FeatureFlag
+public class FeatureFlag : IConfig
 {
     public int Id { get; set; }
 

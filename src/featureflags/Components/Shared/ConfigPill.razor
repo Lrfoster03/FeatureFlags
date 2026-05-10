@@ -1,0 +1,504 @@
+@using FeatureFlags.Components.Models
+@using BlazorBootstrap
+@using System.Text.Json
+@using System.Text.Json.Nodes
+
+<div class="feature-pill btn btn-primary rounded-pill @(isExpanded ? "expanded" : "collapsed")">
+    <div class="pill-header" @onclick="ToggleExpanded">
+        <div class="pill-title">
+            @(string.IsNullOrWhiteSpace(Config?.Name) ? "New Config" : Config.Name)
+        </div>
+    </div>
+
+    @if (isExpanded)
+    {
+        <div class="pill-body">
+            <div class="mb-3">
+                <label class="form-label text-white">Name</label>
+                <input class="form-control" value="@Config!.Name" @oninput="HandleNameChanged"
+                       @onclick:stopPropagation="true" />
+            </div>
+
+            <div class="row g-3 align-items-start">
+                <div class="col-12 col-md">
+                    <div class="mb-3 h-100">
+                        <label class="form-label text-white">Description</label>
+                        <textarea class="form-control h-100" rows="3" style="min-height: 80px;"
+                                  @oninput="HandleDescriptionChanged"
+                                  @onclick:stopPropagation="true">@Config.Description</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                    <label class="form-label text-white mb-0">JSON Schema</label>
+                    <div class="btn-group btn-group-sm" @onclick:stopPropagation="true">
+                        <button type="button" class="btn btn-light schema-format-button" @onclick="FormatSchemaEditor">Format</button>
+                        <button type="button" class="btn btn-light schema-minify-button" @onclick="MinifySchemaEditor">Minify</button>
+                        <button type="button" class="btn btn-light schema-reset-button" @onclick="ResetSchemaEditor">Reset</button>
+                    </div>
+                </div>
+                <div class="json-editor @(schemaError is null ? null : "is-invalid")" @onclick:stopPropagation="true">
+                    <pre class="json-editor-lines" aria-hidden="true">@SchemaLineNumbers</pre>
+                    <textarea class="form-control font-monospace config-json-input config-schema-input"
+                              aria-label="JSON config schema"
+                              rows="10"
+                              spellcheck="false"
+                              value="@schemaText"
+                              @oninput="HandleSchemaChanged"></textarea>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(schemaError))
+                {
+                    <div class="invalid-feedback d-block text-white">
+                        @schemaError
+                    </div>
+                }
+            </div>
+
+            <div class="mb-3">
+                <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                    <label class="form-label text-white mb-0">JSON Value</label>
+                    <div class="btn-group btn-group-sm" @onclick:stopPropagation="true">
+                        <button type="button" class="btn btn-light value-format-button" @onclick="FormatValueEditor">Format</button>
+                        <button type="button" class="btn btn-light value-minify-button" @onclick="MinifyValueEditor">Minify</button>
+                        <button type="button" class="btn btn-light value-reset-button" @onclick="ResetValueEditor">Reset</button>
+                    </div>
+                </div>
+                <div class="json-editor @(valueError is null ? null : "is-invalid")" @onclick:stopPropagation="true">
+                    <pre class="json-editor-lines" aria-hidden="true">@ValueLineNumbers</pre>
+                    <textarea class="form-control font-monospace config-json-input config-value-input"
+                              aria-label="JSON config value"
+                              rows="10"
+                              spellcheck="false"
+                              value="@valueText"
+                              @oninput="HandleValueChanged"></textarea>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(valueError))
+                {
+                    <div class="invalid-feedback d-block text-white">
+                        @valueError
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="d-flex align-items-center justify-content-end mt-3 mb-3 ms-3 me-3" @onclick:stopPropagation="true">
+            <Button Color="ButtonColor.Danger" Size="ButtonSize.Small" class="me-3 mb-3" @onclick="DeleteConfig">
+                <i class="bi bi-trash"></i> Delete
+            </Button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public FeatureConfig Config { get; set; } = new FeatureConfig();
+
+    [Parameter]
+    public EventCallback<FeatureConfig> OnChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<FeatureConfig> OnDelete { get; set; }
+
+    private bool isExpanded;
+    private string schemaText = "{}";
+    private string valueText = "{}";
+    private string? schemaError;
+    private string? valueError;
+    private bool isEditingSchema;
+    private bool isEditingValue;
+
+    private static readonly JsonSerializerOptions JsonDisplayOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true
+    };
+
+    private static readonly JsonSerializerOptions JsonCompactOptions = new(JsonSerializerDefaults.Web);
+
+    private string SchemaLineNumbers => GetLineNumbers(schemaText);
+
+    private string ValueLineNumbers => GetLineNumbers(valueText);
+
+    protected override void OnParametersSet()
+    {
+        if (!isEditingSchema)
+        {
+            schemaText = FormatJson(Config.Schema);
+            schemaError = null;
+        }
+
+        if (!isEditingValue)
+        {
+            valueText = FormatJson(Config.Value);
+            valueError = null;
+        }
+    }
+
+    private void ToggleExpanded()
+    {
+        isExpanded = !isExpanded;
+    }
+
+    private async Task HandleNameChanged(ChangeEventArgs e)
+    {
+        Config.Name = e.Value?.ToString() ?? string.Empty;
+        await OnChanged.InvokeAsync(Config);
+    }
+
+    private async Task HandleDescriptionChanged(ChangeEventArgs e)
+    {
+        Config.Description = e.Value?.ToString() ?? string.Empty;
+        await OnChanged.InvokeAsync(Config);
+    }
+
+    private async Task HandleSchemaChanged(ChangeEventArgs e)
+    {
+        isEditingSchema = true;
+        schemaText = e.Value?.ToString() ?? string.Empty;
+
+        if (!TryParseJsonObject(schemaText, out var schemaObject, out var error))
+        {
+            schemaError = error;
+            return;
+        }
+
+        if (!ValidateAgainstSchema(Config.Value, schemaObject, out var validationError))
+        {
+            schemaError = validationError;
+            return;
+        }
+
+        schemaError = null;
+        valueError = null;
+        Config.Schema = schemaObject;
+        await OnChanged.InvokeAsync(Config);
+    }
+
+    private async Task HandleValueChanged(ChangeEventArgs e)
+    {
+        isEditingValue = true;
+        valueText = e.Value?.ToString() ?? string.Empty;
+
+        if (!TryParseJsonObject(valueText, out var valueObject, out var error))
+        {
+            valueError = error;
+            return;
+        }
+
+        if (!ValidateAgainstSchema(valueObject, Config.Schema, out var validationError))
+        {
+            valueError = validationError;
+            return;
+        }
+
+        valueError = null;
+        Config.Value = valueObject;
+        await OnChanged.InvokeAsync(Config);
+    }
+
+    private async Task FormatSchemaEditor()
+    {
+        if (!TryParseJsonObject(schemaText, out var schemaObject, out var error))
+        {
+            schemaError = error;
+            return;
+        }
+
+        if (!ValidateAgainstSchema(Config.Value, schemaObject, out var validationError))
+        {
+            schemaError = validationError;
+            return;
+        }
+
+        schemaError = null;
+        valueError = null;
+        schemaText = schemaObject.ToJsonString(JsonDisplayOptions);
+        Config.Schema = schemaObject;
+        await OnChanged.InvokeAsync(Config);
+    }
+
+    private async Task MinifySchemaEditor()
+    {
+        if (!TryParseJsonObject(schemaText, out var schemaObject, out var error))
+        {
+            schemaError = error;
+            return;
+        }
+
+        if (!ValidateAgainstSchema(Config.Value, schemaObject, out var validationError))
+        {
+            schemaError = validationError;
+            return;
+        }
+
+        schemaError = null;
+        valueError = null;
+        schemaText = schemaObject.ToJsonString(JsonCompactOptions);
+        Config.Schema = schemaObject;
+        await OnChanged.InvokeAsync(Config);
+    }
+
+    private void ResetSchemaEditor()
+    {
+        schemaText = FormatJson(Config.Schema);
+        schemaError = null;
+        isEditingSchema = false;
+    }
+
+    private async Task FormatValueEditor()
+    {
+        if (!TryParseJsonObject(valueText, out var valueObject, out var error))
+        {
+            valueError = error;
+            return;
+        }
+
+        if (!ValidateAgainstSchema(valueObject, Config.Schema, out var validationError))
+        {
+            valueError = validationError;
+            return;
+        }
+
+        valueError = null;
+        valueText = valueObject.ToJsonString(JsonDisplayOptions);
+        Config.Value = valueObject;
+        await OnChanged.InvokeAsync(Config);
+    }
+
+    private async Task MinifyValueEditor()
+    {
+        if (!TryParseJsonObject(valueText, out var valueObject, out var error))
+        {
+            valueError = error;
+            return;
+        }
+
+        if (!ValidateAgainstSchema(valueObject, Config.Schema, out var validationError))
+        {
+            valueError = validationError;
+            return;
+        }
+
+        valueError = null;
+        valueText = valueObject.ToJsonString(JsonCompactOptions);
+        Config.Value = valueObject;
+        await OnChanged.InvokeAsync(Config);
+    }
+
+    private void ResetValueEditor()
+    {
+        valueText = FormatJson(Config.Value);
+        valueError = null;
+        isEditingValue = false;
+    }
+
+    private static string FormatJson(JsonObject value)
+    {
+        return value.ToJsonString(JsonDisplayOptions);
+    }
+
+    private static string GetLineNumbers(string text)
+    {
+        return string.Join(Environment.NewLine, Enumerable.Range(1, Math.Max(1, text.Split('\n').Length)));
+    }
+
+    private static bool TryParseJsonObject(string text, out JsonObject jsonObject, out string? error)
+    {
+        jsonObject = [];
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            error = "JSON value must be an object.";
+            return false;
+        }
+
+        JsonNode? parsed;
+        try
+        {
+            parsed = JsonNode.Parse(text);
+        }
+        catch (JsonException exception)
+        {
+            error = $"Invalid JSON: {exception.Message}";
+            return false;
+        }
+
+        if (parsed is not JsonObject parsedObject)
+        {
+            error = "JSON value must be an object.";
+            return false;
+        }
+
+        jsonObject = parsedObject;
+        return true;
+    }
+
+    private static bool ValidateAgainstSchema(JsonNode value, JsonObject schema, out string? error)
+    {
+        return ValidateAgainstSchema(value, schema, "$", out error);
+    }
+
+    private static bool ValidateAgainstSchema(JsonNode? value, JsonObject schema, string path, out string? error)
+    {
+        error = null;
+
+        if (schema.TryGetPropertyValue("const", out var constValue) && !JsonNode.DeepEquals(value, constValue))
+        {
+            error = $"{path} must match the schema const value.";
+            return false;
+        }
+
+        if (schema.TryGetPropertyValue("enum", out var enumNode) && enumNode is JsonArray enumValues &&
+            !enumValues.Any(enumValue => JsonNode.DeepEquals(value, enumValue)))
+        {
+            error = $"{path} must match one of the allowed enum values.";
+            return false;
+        }
+
+        if (schema.TryGetPropertyValue("type", out var typeNode) && typeNode is not null && !MatchesType(value, typeNode))
+        {
+            error = $"{path} must be {DescribeType(typeNode)}.";
+            return false;
+        }
+
+        if (value is JsonObject valueObject)
+        {
+            if (schema.TryGetPropertyValue("required", out var requiredNode) && requiredNode is JsonArray requiredValues)
+            {
+                foreach (var requiredValue in requiredValues.OfType<JsonValue>())
+                {
+                    var propertyName = requiredValue.GetValue<string>();
+                    if (!valueObject.ContainsKey(propertyName))
+                    {
+                        error = $"{path}.{propertyName} is required.";
+                        return false;
+                    }
+                }
+            }
+
+            if (schema.TryGetPropertyValue("properties", out var propertiesNode) && propertiesNode is JsonObject properties)
+            {
+                foreach (var property in properties)
+                {
+                    if (valueObject.TryGetPropertyValue(property.Key, out var propertyValue) &&
+                        property.Value is JsonObject propertySchema &&
+                        !ValidateAgainstSchema(propertyValue, propertySchema, $"{path}.{property.Key}", out error))
+                    {
+                        return false;
+                    }
+                }
+
+                if (schema.TryGetPropertyValue("additionalProperties", out var additionalPropertiesNode) &&
+                    additionalPropertiesNode is JsonValue additionalPropertiesValue &&
+                    additionalPropertiesValue.TryGetValue<bool>(out var additionalProperties) &&
+                    !additionalProperties)
+                {
+                    var unknownProperty = valueObject.Select(p => p.Key).FirstOrDefault(p => !properties.ContainsKey(p));
+                    if (unknownProperty is not null)
+                    {
+                        error = $"{path}.{unknownProperty} is not allowed by the schema.";
+                        return false;
+                    }
+                }
+            }
+        }
+
+        if (value is JsonArray valueArray &&
+            schema.TryGetPropertyValue("items", out var itemsNode) &&
+            itemsNode is JsonObject itemSchema)
+        {
+            for (var i = 0; i < valueArray.Count; i++)
+            {
+                if (!ValidateAgainstSchema(valueArray[i], itemSchema, $"{path}[{i}]", out error))
+                    return false;
+            }
+        }
+
+        if (value is JsonValue jsonValue && jsonValue.TryGetValue<string>(out var stringValue))
+        {
+            if (schema.TryGetPropertyValue("minLength", out var minLengthNode) &&
+                minLengthNode is JsonValue minLengthValue &&
+                stringValue.Length < minLengthValue.GetValue<int>())
+            {
+                error = $"{path} is shorter than the schema minLength.";
+                return false;
+            }
+
+            if (schema.TryGetPropertyValue("maxLength", out var maxLengthNode) &&
+                maxLengthNode is JsonValue maxLengthValue &&
+                stringValue.Length > maxLengthValue.GetValue<int>())
+            {
+                error = $"{path} is longer than the schema maxLength.";
+                return false;
+            }
+        }
+
+        if (TryGetNumber(value, out var numberValue))
+        {
+            if (schema.TryGetPropertyValue("minimum", out var minimumNode) &&
+                TryGetNumber(minimumNode, out var minimum) &&
+                numberValue < minimum)
+            {
+                error = $"{path} is less than the schema minimum.";
+                return false;
+            }
+
+            if (schema.TryGetPropertyValue("maximum", out var maximumNode) &&
+                TryGetNumber(maximumNode, out var maximum) &&
+                numberValue > maximum)
+            {
+                error = $"{path} is greater than the schema maximum.";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool MatchesType(JsonNode? value, JsonNode typeNode)
+    {
+        if (typeNode is JsonArray types)
+            return types.Any(type => type is JsonValue typeValue && MatchesType(value, typeValue.GetValue<string>()));
+
+        return typeNode is JsonValue jsonValue && MatchesType(value, jsonValue.GetValue<string>());
+    }
+
+    private static bool MatchesType(JsonNode? value, string type)
+    {
+        return type switch
+        {
+            "object" => value is JsonObject,
+            "array" => value is JsonArray,
+            "string" => value is JsonValue jsonValue && jsonValue.TryGetValue<string>(out _),
+            "boolean" => value is JsonValue jsonValue && jsonValue.TryGetValue<bool>(out _),
+            "integer" => value is JsonValue jsonValue && jsonValue.TryGetValue<int>(out _),
+            "number" => TryGetNumber(value, out _),
+            "null" => value is null,
+            _ => true
+        };
+    }
+
+    private static string DescribeType(JsonNode typeNode)
+    {
+        if (typeNode is JsonArray types)
+            return string.Join(" or ", types.OfType<JsonValue>().Select(type => type.GetValue<string>()));
+
+        return typeNode is JsonValue value ? value.GetValue<string>() : "the expected type";
+    }
+
+    private static bool TryGetNumber(JsonNode? node, out decimal value)
+    {
+        value = 0;
+
+        return node is JsonValue jsonValue &&
+            (jsonValue.TryGetValue<decimal>(out value) ||
+             (jsonValue.TryGetValue<double>(out var doubleValue) && decimal.TryParse(doubleValue.ToString(), out value)));
+    }
+
+    private async Task DeleteConfig()
+    {
+        await OnDelete.InvokeAsync(Config);
+    }
+}

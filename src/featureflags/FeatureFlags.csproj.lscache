@@ -60,8 +60,10 @@ Areas/Identity/Pages/Account/
  Register.cshtml.cs
 Components/Models/
  ClientKey.cs
+ Config.cs
  FeatureFlag.cs
  FeatureFlagResponse.cs
+ IConfig.cs
  Project.cs
  ProjectEnvironment.cs
  ProjectMember.cs
@@ -80,6 +82,10 @@ Migrations/
  FeatureFlagDb/
   20260510051118_InitialFeatureFlags.cs
   20260510051118_InitialFeatureFlags.Designer.cs
+  20260510064235_AddFeatureConfigs.cs
+  20260510064235_AddFeatureConfigs.Designer.cs
+  20260510065501_AddFeatureConfigSchema.cs
+  20260510065501_AddFeatureConfigSchema.Designer.cs
   FeatureFlagDbContextModelSnapshot.cs
 obj/Debug/net10.0/
  .NETCoreApp,Version=v10.0.AssemblyAttributes.cs
@@ -542,7 +548,9 @@ Components/
   Projects.razor
   Settings.razor
  Routes.razor
- Shared/Pill.razor
+ Shared/
+  ConfigPill.razor
+  FlagPill.razor
  _Imports.razor
 Pages/
  Shared/_LoginPartial.cshtml
@@ -566,7 +574,9 @@ Components/
   Projects.razor
   Settings.razor
  Routes.razor
- Shared/Pill.razor
+ Shared/
+  ConfigPill.razor
+  FlagPill.razor
  _Imports.razor
 Pages/
  Shared/_LoginPartial.cshtml
