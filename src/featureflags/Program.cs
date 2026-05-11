@@ -19,6 +19,8 @@ var connectionString = builder.Configuration.GetConnectionString(FeatureFlagDbCo
 
 builder.Services.AddDbContext<FeatureFlagDbContext>(options =>
     options.UseNpgsql(connectionString));
+builder.Services.AddDbContextFactory<FeatureFlagDbContext>(options =>
+    options.UseNpgsql(connectionString));
 builder.Services.AddScoped<IFeatureFlagConfirmationService, FeatureFlagConfirmationService>();
 builder.Services.AddScoped<IProjectPermissionService, ProjectPermissionService>();
 builder.Services.AddScoped<IProjectProvisioningService, ProjectProvisioningService>();

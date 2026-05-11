@@ -12,7 +12,7 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.EntityFrameworkCore
 
-@inject FeatureFlagDbContext Db
+@inject IDbContextFactory<FeatureFlagDbContext> DbFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject UserManager<ApplicationUser> UserManager
@@ -98,7 +98,9 @@ else
             return;
         }
 
-        projects = await Db.ProjectMembers
+        await using var db = await DbFactory.CreateDbContextAsync();
+
+        projects = await db.ProjectMembers
             .Where(m => m.UserId == currentUserId && m.RevokedAt == null)
             .Include(m => m.Project)
             .OrderBy(m => m.Project.Name)

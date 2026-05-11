@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace FeatureFlags.Services;
 
-public class ProjectPermissionService(FeatureFlagDbContext db) : IProjectPermissionService
+public class ProjectPermissionService(IDbContextFactory<FeatureFlagDbContext> dbFactory) : IProjectPermissionService
 {
     public Task<bool> CanViewProjectAsync(string projectId, string? userId)
         => HasRole(projectId, userId, ProjectRole.Viewer, ProjectRole.Editor, ProjectRole.Admin, ProjectRole.Owner);
@@ -18,12 +18,14 @@ public class ProjectPermissionService(FeatureFlagDbContext db) : IProjectPermiss
     public Task<bool> CanManageKeysAsync(string projectId, string? userId)
         => HasRole(projectId, userId, ProjectRole.Admin, ProjectRole.Owner);
 
-    private Task<bool> HasRole(string projectId, string? userId, params ProjectRole[] roles)
+    private async Task<bool> HasRole(string projectId, string? userId, params ProjectRole[] roles)
     {
         if (string.IsNullOrWhiteSpace(userId))
-            return Task.FromResult(false);
+            return false;
 
-        return db.ProjectMembers.AnyAsync(m =>
+        await using var db = await dbFactory.CreateDbContextAsync();
+
+        return await db.ProjectMembers.AnyAsync(m =>
             m.ProjectId == projectId &&
             m.UserId == userId &&
             roles.Contains(m.Role) &&

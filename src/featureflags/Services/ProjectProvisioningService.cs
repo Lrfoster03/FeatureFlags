@@ -1,12 +1,11 @@
 using FeatureFlags.Components.Models;
 using FeatureFlags.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace FeatureFlags.Services;
 
-public sealed class ProjectProvisioningService(FeatureFlagDbContext db) : IProjectProvisioningService
+public sealed class ProjectProvisioningService(IDbContextFactory<FeatureFlagDbContext> dbFactory) : IProjectProvisioningService
 {
-    private readonly FeatureFlagDbContext _db = db;
-
     public async Task<Project> CreateProjectForUserAsync(
         ApplicationUser user,
         string? projectName = null,
@@ -39,9 +38,10 @@ public sealed class ProjectProvisioningService(FeatureFlagDbContext db) : IProje
             }
         };
 
-        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
-        _db.Projects.Add(project);
-        await _db.SaveChangesAsync(cancellationToken);
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        db.Projects.Add(project);
+        await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return project;
