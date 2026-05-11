@@ -1,12 +1,16 @@
 using Bunit;
+using Bunit.TestDoubles;
 using FeatureFlags.Components.Models;
 using FeatureFlags.Components.Pages;
 using FeatureFlags.Components.Shared;
 using FeatureFlags.Data;
 using FeatureFlags.Services;
+using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using System.Security.Claims;
+using System.Text.Json.Nodes;
 
 namespace FeatureFlags.Tests;
 
@@ -21,9 +25,11 @@ public class HomeTests : BunitContext
             new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", PercentageRollout = 0 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        AddAuthenticatedUser();
 
-        var cut = Render<Home>();
+        var cut = RenderHome(database);
 
         Assert.Contains("Alpha", cut.Markup);
         Assert.Contains("Beta", cut.Markup);
@@ -48,11 +54,13 @@ public class HomeTests : BunitContext
             new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", PercentageRollout = 0 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        AddAuthenticatedUser();
 
-        var cut = Render<Home>();
-        var firstPill = cut.FindComponents<Pill>().Single(p => p.Instance.FeatureFlag.Id == 1);
-        var updatedFlag = new FeatureFlag { Id = 1, Name = "  Beta  ", Description = "Updated", PercentageRollout = 50 };
+        var cut = RenderHome(database);
+        var firstPill = cut.FindComponents<FlagPill>().Single(p => p.Instance.FeatureFlag.Id == 1);
+        var updatedFlag = new FeatureFlag { Id = 1, Name = "  Beta  ", Description = "Updated", PercentageRollout = 50, ProjectEnvironmentId = database.EnvironmentId };
 
         await cut.InvokeAsync(() => firstPill.Instance.OnChanged.InvokeAsync(updatedFlag));
 
@@ -72,10 +80,12 @@ public class HomeTests : BunitContext
         database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        AddAuthenticatedUser();
 
-        var cut = Render<Home>();
-        var firstPill = cut.FindComponent<Pill>();
+        var cut = RenderHome(database);
+        var firstPill = cut.FindComponent<FlagPill>();
         var updatedFlag = firstPill.Instance.FeatureFlag;
         updatedFlag.Name = "  Gamma  ";
         updatedFlag.Description = "Updated";
@@ -99,12 +109,14 @@ public class HomeTests : BunitContext
         database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped<FeatureFlagDbContext>(_ => new ThrowingFeatureFlagDbContext(
             database.CreateOptions(),
             throwOnModifiedSave: true));
+        AddAuthenticatedUser();
 
-        var cut = Render<Home>();
-        var firstPill = cut.FindComponent<Pill>();
+        var cut = RenderHome(database);
+        var firstPill = cut.FindComponent<FlagPill>();
         var updatedFlag = firstPill.Instance.FeatureFlag;
         updatedFlag.Name = "Gamma";
         updatedFlag.Description = "Updated";
@@ -122,10 +134,12 @@ public class HomeTests : BunitContext
         database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        AddAuthenticatedUser();
 
-        var cut = Render<Home>();
-        var firstPill = cut.FindComponent<Pill>();
+        var cut = RenderHome(database);
+        var firstPill = cut.FindComponent<FlagPill>();
 
         await cut.InvokeAsync(() => firstPill.Instance.OnDelete.InvokeAsync(firstPill.Instance.FeatureFlag));
 
@@ -142,11 +156,13 @@ public class HomeTests : BunitContext
         database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        AddAuthenticatedUser();
 
-        var cut = Render<Home>();
-        var firstPill = cut.FindComponent<Pill>();
-        var missingFlag = new FeatureFlag { Id = 999, Name = "Alpha" };
+        var cut = RenderHome(database);
+        var firstPill = cut.FindComponent<FlagPill>();
+        var missingFlag = new FeatureFlag { Id = 999, Name = "Alpha", ProjectEnvironmentId = database.EnvironmentId };
 
         await cut.InvokeAsync(() => firstPill.Instance.OnDelete.InvokeAsync(missingFlag));
 
@@ -160,12 +176,14 @@ public class HomeTests : BunitContext
         database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped<FeatureFlagDbContext>(_ => new ThrowingFeatureFlagDbContext(
             database.CreateOptions(),
             throwOnDeletedSave: true));
+        AddAuthenticatedUser();
 
-        var cut = Render<Home>();
-        var firstPill = cut.FindComponent<Pill>();
+        var cut = RenderHome(database);
+        var firstPill = cut.FindComponent<FlagPill>();
 
         await cut.InvokeAsync(() => firstPill.Instance.OnDelete.InvokeAsync(firstPill.Instance.FeatureFlag));
 
@@ -181,10 +199,12 @@ public class HomeTests : BunitContext
             new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", PercentageRollout = 0 });
 
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        AddAuthenticatedUser();
 
-        var cut = Render<Home>();
-        var firstPill = cut.FindComponents<Pill>().Single(p => p.Instance.FeatureFlag.Id == 1);
+        var cut = RenderHome(database);
+        var firstPill = cut.FindComponents<FlagPill>().Single(p => p.Instance.FeatureFlag.Id == 1);
 
         await cut.InvokeAsync(() => firstPill.Instance.OnDelete.InvokeAsync(firstPill.Instance.FeatureFlag));
 
@@ -194,15 +214,80 @@ public class HomeTests : BunitContext
         Assert.DoesNotContain("Alpha", cut.Markup);
     }
 
+    [Fact]
+    public void Home_Renders_Flags_Section_Before_Configs_Section()
+    {
+        using var database = new TestDatabase();
+        database.Seed(
+            new FeatureFlag { Id = 1, Name = "Alpha", Description = "First", PercentageRollout = 100 },
+            new FeatureFlag { Id = 2, Name = "Beta", Description = "Second", PercentageRollout = 0 });
+        database.SeedConfigs(
+            new FeatureConfig
+            {
+                Id = 1,
+                Name = "CheckoutConfig",
+                Description = "Checkout settings",
+                Value = new JsonObject { ["enabled"] = true }
+            });
+
+        Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
+        Services.AddScoped(_ => database.CreateContext());
+        AddAuthenticatedUser();
+
+        var cut = RenderHome(database);
+        var markup = cut.Markup;
+
+        Assert.Contains("Feature Flags", markup);
+        Assert.Contains("Configs", markup);
+        Assert.True(markup.IndexOf("Feature Flags", StringComparison.Ordinal) < markup.IndexOf("Configs", StringComparison.Ordinal));
+        Assert.True(markup.IndexOf("Alpha", StringComparison.Ordinal) < markup.IndexOf("CheckoutConfig", StringComparison.Ordinal));
+    }
+
     private sealed class StubConfirmationService(bool shouldConfirm) : IFeatureFlagConfirmationService
     {
         public Task<bool> ConfirmDeleteAsync(BlazorBootstrap.ConfirmDialog dialog, string featureFlagName)
             => Task.FromResult(shouldConfirm);
     }
 
+    private IRenderedComponent<Home> RenderHome(TestDatabase database)
+        => Render<Home>(parameters => parameters.Add(p => p.ProjectId, database.ProjectId));
+
+    private void AddAuthenticatedUser()
+    {
+        Services.AddAuthorization();
+        Services.AddCascadingAuthenticationState();
+        Services.AddSingleton<AuthenticationStateProvider>(
+            new BunitAuthenticationStateProvider(
+                "owner@example.com",
+                [],
+                [new Claim(ClaimTypes.NameIdentifier, TestDatabase.UserId)],
+                "Test"));
+    }
+
+    private sealed class StubProjectPermissionService : IProjectPermissionService
+    {
+        public Task<bool> CanViewProjectAsync(string projectId, string? userId)
+            => Task.FromResult(true);
+
+        public Task<bool> CanEditFlagsAsync(string projectId, string? userId)
+            => Task.FromResult(true);
+
+        public Task<bool> CanManageMembersAsync(string projectId, string? userId)
+            => Task.FromResult(true);
+
+        public Task<bool> CanManageKeysAsync(string projectId, string? userId)
+            => Task.FromResult(true);
+    }
+
     private sealed class TestDatabase : IDisposable
     {
+        public const string UserId = "owner-user";
+
         private readonly SqliteConnection connection = new("Data Source=:memory:");
+
+        public string ProjectId { get; }
+        public int EnvironmentId { get; }
 
         public TestDatabase()
         {
@@ -210,6 +295,31 @@ public class HomeTests : BunitContext
 
             using var context = CreateContext();
             context.Database.EnsureCreated();
+
+            var project = new Project
+            {
+                Name = "Test Project",
+                Environments =
+                {
+                    new ProjectEnvironment { Name = "Development" }
+                },
+                Members =
+                {
+                    new ProjectMember
+                    {
+                        UserId = UserId,
+                        Email = "owner@example.com",
+                        DisplayName = "Owner",
+                        Role = ProjectRole.Owner
+                    }
+                }
+            };
+
+            context.Projects.Add(project);
+            context.SaveChanges();
+
+            ProjectId = project.Id;
+            EnvironmentId = project.Environments.Single().Id;
         }
 
         public FeatureFlagDbContext CreateContext() => new(CreateOptions());
@@ -222,7 +332,26 @@ public class HomeTests : BunitContext
         public void Seed(params FeatureFlag[] flags)
         {
             using var context = CreateContext();
+            foreach (var flag in flags)
+            {
+                if (flag.ProjectEnvironmentId == 0)
+                    flag.ProjectEnvironmentId = EnvironmentId;
+            }
+
             context.FeatureFlags.AddRange(flags);
+            context.SaveChanges();
+        }
+
+        public void SeedConfigs(params FeatureConfig[] configs)
+        {
+            using var context = CreateContext();
+            foreach (var config in configs)
+            {
+                if (config.ProjectEnvironmentId == 0)
+                    config.ProjectEnvironmentId = EnvironmentId;
+            }
+
+            context.Configs.AddRange(configs);
             context.SaveChanges();
         }
 

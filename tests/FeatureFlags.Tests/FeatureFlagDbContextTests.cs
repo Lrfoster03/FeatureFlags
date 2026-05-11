@@ -116,7 +116,7 @@ public class FeatureFlagDbContextTests
     }
 
     [Fact]
-    public void Factory_Creates_Sqlite_DbContext_With_Expected_Connection_String()
+    public void Factory_Creates_Postgres_DbContext_With_Expected_Connection_String()
     {
         var factory = new FeatureFlagDbContextFactory();
 
@@ -126,7 +126,7 @@ public class FeatureFlagDbContextTests
 
         Assert.NotNull(connectionString);
         Assert.Contains(FeatureFlagDbContextFactory.DefaultConnectionString, connectionString);
-        Assert.Equal("Microsoft.EntityFrameworkCore.Sqlite", context.Database.ProviderName);
+        Assert.Equal("Npgsql.EntityFrameworkCore.PostgreSQL", context.Database.ProviderName);
     }
 
     private static FeatureFlagDbContext CreateContext(SqliteConnection connection)
