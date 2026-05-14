@@ -7,7 +7,7 @@
 <div class="feature-pill btn btn-primary rounded-pill @(isExpanded ? "expanded" : "collapsed")">
     <div class="pill-header" @onclick="ToggleExpanded">
         <div class="pill-title">
-            @(string.IsNullOrWhiteSpace(Config?.Name) ? "New Config" : Config.Name)
+            @(string.IsNullOrWhiteSpace(nameText) ? "New Config" : nameText)
         </div>
     </div>
 
@@ -16,7 +16,7 @@
         <div class="pill-body">
             <div class="mb-3">
                 <label class="form-label text-white">Name</label>
-                <input class="form-control" value="@Config!.Name" @oninput="HandleNameChanged"
+                <input class="form-control" value="@nameText" @oninput="HandleNameChanged"
                        @onclick:stopPropagation="true" />
             </div>
 
@@ -24,7 +24,7 @@
                 <div class="col-12 col-md">
                     <div class="mb-3 h-100">
                         <label class="form-label text-white">Description</label>
-                        <textarea class="form-control h-100" rows="3" style="min-height: 80px;" value="@Config.Description"
+                        <textarea class="form-control h-100" rows="3" style="min-height: 80px;" value="@descriptionText"
                                   @oninput="HandleDescriptionChanged" @onclick:stopPropagation="true"></textarea>
                     </div>
                 </div>
@@ -104,6 +104,10 @@
     private bool isExpanded;
     private CancellationTokenSource? changeDebounceCts;
     private static readonly TimeSpan ChangeDebounceDelay = TimeSpan.FromMilliseconds(400);
+    private string nameText = string.Empty;
+    private string descriptionText = string.Empty;
+    private bool isEditingName;
+    private bool isEditingDescription;
     private string schemaText = "{}";
     private string valueText = "{}";
     private string? schemaError;
@@ -124,6 +128,16 @@
 
     protected override void OnParametersSet()
     {
+        if (!isEditingName)
+        {
+            nameText = Config.Name;
+        }
+
+        if (!isEditingDescription)
+        {
+            descriptionText = Config.Description;
+        }
+
         if (!isEditingSchema)
         {
             schemaText = FormatJson(Config.Schema);
@@ -144,13 +158,17 @@
 
     private async Task HandleNameChanged(ChangeEventArgs e)
     {
-        Config.Name = e.Value?.ToString() ?? string.Empty;
+        isEditingName = true;
+        nameText = e.Value?.ToString() ?? string.Empty;
+        Config.Name = nameText;
         await NotifyChangedDebouncedAsync();
     }
 
     private async Task HandleDescriptionChanged(ChangeEventArgs e)
     {
-        Config.Description = e.Value?.ToString() ?? string.Empty;
+        isEditingDescription = true;
+        descriptionText = e.Value?.ToString() ?? string.Empty;
+        Config.Description = descriptionText;
         await NotifyChangedDebouncedAsync();
     }
 
@@ -516,6 +534,8 @@
         {
             await Task.Delay(ChangeDebounceDelay, cancellationToken);
             await OnChanged.InvokeAsync(Config);
+            isEditingName = false;
+            isEditingDescription = false;
         }
         catch (TaskCanceledException)
         {

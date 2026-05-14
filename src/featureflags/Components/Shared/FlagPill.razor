@@ -5,7 +5,7 @@
 <div class="feature-pill btn btn-primary rounded-pill @(isExpanded ? "expanded" : "collapsed")">
     <div class="pill-header" @onclick="ToggleExpanded">
         <div class="pill-title">
-            @(string.IsNullOrWhiteSpace(FeatureFlag?.Name) ? "New Feature Flag" : FeatureFlag.Name)
+            @(string.IsNullOrWhiteSpace(nameText) ? "New Feature Flag" : nameText)
         </div>
 
         <div class="pill-status">
@@ -20,7 +20,7 @@
         <div class="pill-body">
             <div class="mb-3">
                 <label class="form-label text-white">Name</label>
-                <input class="form-control" value="@FeatureFlag!.Name" @oninput="HandleNameChanged"
+                <input class="form-control" value="@nameText" @oninput="HandleNameChanged"
                        @onclick:stopPropagation="true" />
             </div>
 
@@ -28,9 +28,8 @@
                 <div class="col-12 col-md">
                     <div class="mb-3 h-100">
                         <label class="form-label text-white">Description</label>
-                        <textarea class="form-control h-100" rows="3" style="min-height: 80px;"
-                                  value="@FeatureFlag.Description" @oninput="HandleDescriptionChanged"
-                                  @onclick:stopPropagation="true"></textarea>
+                        <textarea class="form-control h-100" rows="3" style="min-height: 80px;" value="@descriptionText"
+                                  @oninput="HandleDescriptionChanged" @onclick:stopPropagation="true"></textarea>
                     </div>
                 </div>
                 <div class="col-12 col-md-auto d-flex justify-content-end align-items-start" style="max-width: 170px;">
@@ -68,6 +67,23 @@
     private bool isExpanded;
     private CancellationTokenSource? changeDebounceCts;
     private static readonly TimeSpan ChangeDebounceDelay = TimeSpan.FromMilliseconds(400);
+    private string nameText = string.Empty;
+    private string descriptionText = string.Empty;
+    private bool isEditingName;
+    private bool isEditingDescription;
+
+    protected override void OnParametersSet()
+    {
+        if (!isEditingName)
+        {
+            nameText = FeatureFlag.Name;
+        }
+
+        if (!isEditingDescription)
+        {
+            descriptionText = FeatureFlag.Description;
+        }
+    }
 
     private void ToggleExpanded()
     {
@@ -76,13 +92,17 @@
 
     private async Task HandleNameChanged(ChangeEventArgs e)
     {
-        FeatureFlag.Name = e.Value?.ToString() ?? string.Empty;
+        isEditingName = true;
+        nameText = e.Value?.ToString() ?? string.Empty;
+        FeatureFlag.Name = nameText;
         await NotifyChangedDebouncedAsync();
     }
 
     private async Task HandleDescriptionChanged(ChangeEventArgs e)
     {
-        FeatureFlag.Description = e.Value?.ToString() ?? string.Empty;
+        isEditingDescription = true;
+        descriptionText = e.Value?.ToString() ?? string.Empty;
+        FeatureFlag.Description = descriptionText;
         await NotifyChangedDebouncedAsync();
     }
 
@@ -107,6 +127,8 @@
         {
             await Task.Delay(ChangeDebounceDelay, cancellationToken);
             await OnChanged.InvokeAsync(FeatureFlag);
+            isEditingName = false;
+            isEditingDescription = false;
         }
         catch (TaskCanceledException)
         {
