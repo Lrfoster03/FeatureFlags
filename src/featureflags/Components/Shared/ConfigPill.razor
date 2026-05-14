@@ -1,3 +1,4 @@
+@implements IDisposable
 @using FeatureFlags.Components.Models
 @using BlazorBootstrap
 @using System.Text.Json
@@ -23,9 +24,8 @@
                 <div class="col-12 col-md">
                     <div class="mb-3 h-100">
                         <label class="form-label text-white">Description</label>
-                        <textarea class="form-control h-100" rows="3" style="min-height: 80px;"
-                                  @oninput="HandleDescriptionChanged"
-                                  @onclick:stopPropagation="true">@Config.Description</textarea>
+                        <textarea class="form-control h-100" rows="3" style="min-height: 80px;" value="@Config.Description"
+                                  @oninput="HandleDescriptionChanged" @onclick:stopPropagation="true"></textarea>
                     </div>
                 </div>
             </div>
@@ -34,18 +34,18 @@
                 <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
                     <label class="form-label text-white mb-0">JSON Schema</label>
                     <div class="btn-group btn-group-sm" @onclick:stopPropagation="true">
-                        <button type="button" class="btn btn-light schema-format-button" @onclick="FormatSchemaEditor">Format</button>
-                        <button type="button" class="btn btn-light schema-minify-button" @onclick="MinifySchemaEditor">Minify</button>
-                        <button type="button" class="btn btn-light schema-reset-button" @onclick="ResetSchemaEditor">Reset</button>
+                        <button type="button" class="btn btn-light schema-format-button"
+                                @onclick="FormatSchemaEditor">Format</button>
+                        <button type="button" class="btn btn-light schema-minify-button"
+                                @onclick="MinifySchemaEditor">Minify</button>
+                        <button type="button" class="btn btn-light schema-reset-button"
+                                @onclick="ResetSchemaEditor">Reset</button>
                     </div>
                 </div>
                 <div class="json-editor @(schemaError is null ? null : "is-invalid")" @onclick:stopPropagation="true">
                     <pre class="json-editor-lines" aria-hidden="true">@SchemaLineNumbers</pre>
                     <textarea class="form-control font-monospace config-json-input config-schema-input"
-                              aria-label="JSON config schema"
-                              rows="10"
-                              spellcheck="false"
-                              value="@schemaText"
+                              aria-label="JSON config schema" rows="10" spellcheck="false" value="@schemaText"
                               @oninput="HandleSchemaChanged"></textarea>
                 </div>
                 @if (!string.IsNullOrWhiteSpace(schemaError))
@@ -60,18 +60,18 @@
                 <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
                     <label class="form-label text-white mb-0">JSON Value</label>
                     <div class="btn-group btn-group-sm" @onclick:stopPropagation="true">
-                        <button type="button" class="btn btn-light value-format-button" @onclick="FormatValueEditor">Format</button>
-                        <button type="button" class="btn btn-light value-minify-button" @onclick="MinifyValueEditor">Minify</button>
-                        <button type="button" class="btn btn-light value-reset-button" @onclick="ResetValueEditor">Reset</button>
+                        <button type="button" class="btn btn-light value-format-button"
+                                @onclick="FormatValueEditor">Format</button>
+                        <button type="button" class="btn btn-light value-minify-button"
+                                @onclick="MinifyValueEditor">Minify</button>
+                        <button type="button" class="btn btn-light value-reset-button"
+                                @onclick="ResetValueEditor">Reset</button>
                     </div>
                 </div>
                 <div class="json-editor @(valueError is null ? null : "is-invalid")" @onclick:stopPropagation="true">
                     <pre class="json-editor-lines" aria-hidden="true">@ValueLineNumbers</pre>
                     <textarea class="form-control font-monospace config-json-input config-value-input"
-                              aria-label="JSON config value"
-                              rows="10"
-                              spellcheck="false"
-                              value="@valueText"
+                              aria-label="JSON config value" rows="10" spellcheck="false" value="@valueText"
                               @oninput="HandleValueChanged"></textarea>
                 </div>
                 @if (!string.IsNullOrWhiteSpace(valueError))
@@ -102,6 +102,8 @@
     public EventCallback<FeatureConfig> OnDelete { get; set; }
 
     private bool isExpanded;
+    private CancellationTokenSource? changeDebounceCts;
+    private static readonly TimeSpan ChangeDebounceDelay = TimeSpan.FromMilliseconds(400);
     private string schemaText = "{}";
     private string valueText = "{}";
     private string? schemaError;
@@ -143,13 +145,13 @@
     private async Task HandleNameChanged(ChangeEventArgs e)
     {
         Config.Name = e.Value?.ToString() ?? string.Empty;
-        await OnChanged.InvokeAsync(Config);
+        await NotifyChangedDebouncedAsync();
     }
 
     private async Task HandleDescriptionChanged(ChangeEventArgs e)
     {
         Config.Description = e.Value?.ToString() ?? string.Empty;
-        await OnChanged.InvokeAsync(Config);
+        await NotifyChangedDebouncedAsync();
     }
 
     private async Task HandleSchemaChanged(ChangeEventArgs e)
@@ -172,7 +174,7 @@
         schemaError = null;
         valueError = null;
         Config.Schema = schemaObject;
-        await OnChanged.InvokeAsync(Config);
+        await NotifyChangedDebouncedAsync();
     }
 
     private async Task HandleValueChanged(ChangeEventArgs e)
@@ -194,7 +196,7 @@
 
         valueError = null;
         Config.Value = valueObject;
-        await OnChanged.InvokeAsync(Config);
+        await NotifyChangedDebouncedAsync();
     }
 
     private async Task FormatSchemaEditor()
@@ -215,7 +217,7 @@
         valueError = null;
         schemaText = schemaObject.ToJsonString(JsonDisplayOptions);
         Config.Schema = schemaObject;
-        await OnChanged.InvokeAsync(Config);
+        await NotifyChangedDebouncedAsync();
     }
 
     private async Task MinifySchemaEditor()
@@ -236,7 +238,7 @@
         valueError = null;
         schemaText = schemaObject.ToJsonString(JsonCompactOptions);
         Config.Schema = schemaObject;
-        await OnChanged.InvokeAsync(Config);
+        await NotifyChangedDebouncedAsync();
     }
 
     private void ResetSchemaEditor()
@@ -263,7 +265,7 @@
         valueError = null;
         valueText = valueObject.ToJsonString(JsonDisplayOptions);
         Config.Value = valueObject;
-        await OnChanged.InvokeAsync(Config);
+        await NotifyChangedDebouncedAsync();
     }
 
     private async Task MinifyValueEditor()
@@ -283,7 +285,7 @@
         valueError = null;
         valueText = valueObject.ToJsonString(JsonCompactOptions);
         Config.Value = valueObject;
-        await OnChanged.InvokeAsync(Config);
+        await NotifyChangedDebouncedAsync();
     }
 
     private void ResetValueEditor()
@@ -500,5 +502,29 @@
     private async Task DeleteConfig()
     {
         await OnDelete.InvokeAsync(Config);
+    }
+
+    private async Task NotifyChangedDebouncedAsync()
+    {
+        changeDebounceCts?.Cancel();
+        changeDebounceCts?.Dispose();
+        changeDebounceCts = new CancellationTokenSource();
+
+        var cancellationToken = changeDebounceCts.Token;
+
+        try
+        {
+            await Task.Delay(ChangeDebounceDelay, cancellationToken);
+            await OnChanged.InvokeAsync(Config);
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        changeDebounceCts?.Cancel();
+        changeDebounceCts?.Dispose();
     }
 }

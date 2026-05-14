@@ -1,3 +1,4 @@
+@implements IDisposable
 @using FeatureFlags.Components.Models
 @using BlazorBootstrap
 
@@ -28,8 +29,8 @@
                     <div class="mb-3 h-100">
                         <label class="form-label text-white">Description</label>
                         <textarea class="form-control h-100" rows="3" style="min-height: 80px;"
-                                  @oninput="HandleDescriptionChanged"
-                                  @onclick:stopPropagation="true">@FeatureFlag.Description</textarea>
+                                  value="@FeatureFlag.Description" @oninput="HandleDescriptionChanged"
+                                  @onclick:stopPropagation="true"></textarea>
                     </div>
                 </div>
                 <div class="col-12 col-md-auto d-flex justify-content-end align-items-start" style="max-width: 170px;">
@@ -65,6 +66,8 @@
     public EventCallback<FeatureFlag> OnDelete { get; set; }
 
     private bool isExpanded;
+    private CancellationTokenSource? changeDebounceCts;
+    private static readonly TimeSpan ChangeDebounceDelay = TimeSpan.FromMilliseconds(400);
 
     private void ToggleExpanded()
     {
@@ -74,13 +77,13 @@
     private async Task HandleNameChanged(ChangeEventArgs e)
     {
         FeatureFlag.Name = e.Value?.ToString() ?? string.Empty;
-        await OnChanged.InvokeAsync(FeatureFlag);
+        await NotifyChangedDebouncedAsync();
     }
 
     private async Task HandleDescriptionChanged(ChangeEventArgs e)
     {
         FeatureFlag.Description = e.Value?.ToString() ?? string.Empty;
-        await OnChanged.InvokeAsync(FeatureFlag);
+        await NotifyChangedDebouncedAsync();
     }
 
     private async Task HandleRolloutChanged(ChangeEventArgs e)
@@ -88,8 +91,32 @@
         if (int.TryParse(e.Value?.ToString(), out var rollout))
         {
             FeatureFlag.PercentageRollout = Math.Clamp(rollout, 0, 100);
+            await NotifyChangedDebouncedAsync();
+        }
+    }
+
+    private async Task NotifyChangedDebouncedAsync()
+    {
+        changeDebounceCts?.Cancel();
+        changeDebounceCts?.Dispose();
+        changeDebounceCts = new CancellationTokenSource();
+
+        var cancellationToken = changeDebounceCts.Token;
+
+        try
+        {
+            await Task.Delay(ChangeDebounceDelay, cancellationToken);
             await OnChanged.InvokeAsync(FeatureFlag);
         }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    public void Dispose()
+    {
+        changeDebounceCts?.Cancel();
+        changeDebounceCts?.Dispose();
     }
 
     private async Task DeleteFeatureFlag()
