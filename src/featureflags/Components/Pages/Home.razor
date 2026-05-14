@@ -42,7 +42,7 @@
                 @foreach (var flag in featureFlags)
                 {
                     <div style="padding: 0.5rem; border-radius: 0.25rem;">
-                        <FlagPill FeatureFlag="flag" OnChanged="SaveFeatureFlag" OnDelete="DeleteFeatureFlag" />
+                        <FlagPill FeatureFlag="flag" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureFlag" />
                     </div>
                 }
             </ul>
@@ -68,17 +68,36 @@
                 @foreach (var config in featureConfigs)
                 {
                     <div style="padding: 0.5rem; border-radius: 0.25rem;">
-                        <ConfigPill Config="config" OnChanged="SaveFeatureConfig" OnDelete="DeleteFeatureConfig" />
+                        <ConfigPill Config="config" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureConfig" />
                     </div>
                 }
             </ul>
         }
     </section>
+
+    @if (HasUnsavedChanges)
+    {
+        <div style="position: fixed; bottom: 1rem; right: 1rem; z-index: 2000; min-width: 360px;">
+            <Alert Color="AlertColor.Warning">
+                <div class="d-flex align-items-center justify-content-between gap-3">
+                    <span>You have unsaved changes.</span>
+                    <div class="d-flex gap-2">
+                        <Button Color="ButtonColor.Success" Size="ButtonSize.Small" @onclick="SaveAllChanges">
+                            Save
+                        </Button>
+                        <Button Color="ButtonColor.Secondary" Size="ButtonSize.Small" @onclick="DiscardAllChanges">
+                            Discard
+                        </Button>
+                    </div>
+                </div>
+            </Alert>
+        </div>
+    }
 </div>
 
 @if (!string.IsNullOrWhiteSpace(errorMessage))
 {
-    <div style="position: fixed; bottom: 1rem; right: 1rem; z-index: 2000; min-width: 320px;">
+    <div style="position: fixed; bottom: 5rem; right: 1rem; z-index: 2001; min-width: 320px;">
         <Alert Color="AlertColor.Danger" Dismissable="true">
             @errorMessage
         </Alert>
@@ -92,6 +111,11 @@
     public string ProjectId { get; set; } = string.Empty;
     private List<FeatureFlag> featureFlags = new();
     private List<FeatureConfig> featureConfigs = new();
+
+    // Dirty tracking for unsaved changes
+    private HashSet<IConfig> dirtyConfigs = new();
+
+    private bool HasUnsavedChanges => dirtyConfigs.Count > 0;
     private string? errorMessage;
     private ConfirmDialog confirmDialog = default!;
 
@@ -247,38 +271,10 @@
         await ReloadConfigsAsync();
     }
 
-    private async Task SaveFeatureFlag(FeatureFlag featureFlag)
+    private Task MarkConfigDirty(IConfig config)
     {
-        if (!await EnsureCanEditAsync())
-            return;
-
-        errorMessage = null;
-
-        featureFlag.Name = featureFlag.Name.Trim();
-
-        var duplicateExists = await Db.FeatureFlags
-            .AnyAsync(f =>
-                f.ProjectEnvironmentId == featureFlag.ProjectEnvironmentId &&
-                f.Name == featureFlag.Name &&
-                f.Id != featureFlag.Id);
-
-        if (duplicateExists)
-        {
-            errorMessage = $"A feature flag named '{featureFlag.Name}' already exists.";
-            return;
-        }
-
-        try
-        {
-            Db.FeatureFlags.Update(featureFlag);
-            await Db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            errorMessage = $"A feature flag named '{featureFlag.Name}' already exists.";
-        }
-
-        await ReloadConfigsAsync();
+        dirtyConfigs.Add(config);
+        return Task.CompletedTask;
     }
 
     private async Task DeleteFeatureFlag(FeatureFlag featureFlag)
@@ -316,41 +312,6 @@
         await ReloadConfigsAsync();
     }
 
-
-    private async Task SaveFeatureConfig(FeatureConfig featureConfig)
-    {
-        if (!await EnsureCanEditAsync())
-            return;
-
-        errorMessage = null;
-
-        featureConfig.Name = featureConfig.Name.Trim();
-
-        var duplicateExists = await Db.Configs
-            .AnyAsync(f =>
-                f.ProjectEnvironmentId == featureConfig.ProjectEnvironmentId &&
-                f.Name == featureConfig.Name &&
-                f.Id != featureConfig.Id);
-
-        if (duplicateExists)
-        {
-            errorMessage = $"A feature config named '{featureConfig.Name}' already exists.";
-            return;
-        }
-
-        try
-        {
-            Db.Configs.Update(featureConfig);
-            await Db.SaveChangesAsync();
-        }
-        catch (DbUpdateException)
-        {
-            errorMessage = $"A feature config named '{featureConfig.Name}' already exists.";
-        }
-
-        await ReloadConfigsAsync();
-    }
-
     private async Task DeleteFeatureConfig(FeatureConfig featureConfig)
     {
         if (!await EnsureCanEditAsync())
@@ -383,6 +344,71 @@
             errorMessage = $"Failed to delete feature config '{featureConfig.Name}'.";
         }
 
+        await ReloadConfigsAsync();
+    }
+
+
+    private async Task SaveAllChanges()
+    {
+        if (!await EnsureCanEditAsync())
+            return;
+
+        errorMessage = null;
+
+        foreach (IConfig config in dirtyConfigs)
+        {
+            config.Name = config.Name.Trim();
+
+            if (config is FeatureFlag flag)
+            {
+                var duplicateExists = await Db.FeatureFlags.AnyAsync(f =>
+                    f.ProjectEnvironmentId == flag.ProjectEnvironmentId &&
+                    f.Name == flag.Name &&
+                    f.Id != flag.Id);
+
+                if (duplicateExists)
+                {
+                    errorMessage = $"A feature flag named '{flag.Name}' already exists.";
+                    return;
+                }
+
+                Db.FeatureFlags.Update(flag);
+            }
+            else if (config is FeatureConfig featureConfig)
+            {
+                var duplicateExists = await Db.Configs.AnyAsync(c =>
+                    c.ProjectEnvironmentId == featureConfig.ProjectEnvironmentId &&
+                    c.Name == featureConfig.Name &&
+                    c.Id != featureConfig.Id);
+
+                if (duplicateExists)
+                {
+                    errorMessage = $"A feature config named '{featureConfig.Name}' already exists.";
+                    return;
+                }
+
+                Db.Configs.Update(featureConfig);
+            }
+        }
+
+        try
+        {
+            await Db.SaveChangesAsync();
+            dirtyConfigs.Clear();
+            await ReloadConfigsAsync();
+        }
+        catch (DbUpdateException)
+        {
+            errorMessage = "Failed to save changes. Check for duplicate names.";
+        }
+    }
+
+    private async Task DiscardAllChanges()
+    {
+        errorMessage = null;
+        dirtyConfigs.Clear();
+
+        Db.ChangeTracker.Clear();
         await ReloadConfigsAsync();
     }
 }
