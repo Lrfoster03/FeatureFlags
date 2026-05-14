@@ -62,6 +62,8 @@ app.MapRazorComponents<App>()
 
 app.MapRazorPages();
 
+app.MapGet("/healthz", () => Results.Ok(new { status = "healthy" }));
+
 app.MapGet("/", () => Results.Redirect("/projects"));
 
 app.MapGet("/api/featureflags", async (
