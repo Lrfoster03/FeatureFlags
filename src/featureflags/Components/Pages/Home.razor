@@ -41,7 +41,7 @@
             <ul class="list-group">
                 @foreach (var flag in featureFlags)
                 {
-                    <div style="padding: 0.5rem; border-radius: 0.25rem;">
+                    <div @key="flag.Id" style="padding: 0.5rem; border-radius: 0.25rem;">
                         <FlagPill FeatureFlag="flag" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureFlag" />
                     </div>
                 }
@@ -67,7 +67,7 @@
             <ul class="list-group">
                 @foreach (var config in featureConfigs)
                 {
-                    <div style="padding: 0.5rem; border-radius: 0.25rem;">
+                    <div @key="config.Id" style="padding: 0.5rem; border-radius: 0.25rem;">
                         <ConfigPill Config="config" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureConfig" />
                     </div>
                 }

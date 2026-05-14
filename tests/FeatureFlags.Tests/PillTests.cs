@@ -70,11 +70,15 @@ public class PillTests : BunitContext
             .Add(p => p.OnChanged, c => updated = c));
 
         cut.Find(".pill-header").Click();
-        cut.Find("textarea.config-value-input").Input("""{"enabled":false,"limit":5}""");
+        cut.Find("textarea.config-value-input").Change("""{"enabled":false,"limit":5}""");
 
-        Assert.NotNull(updated);
-        Assert.False(updated!.Value["enabled"]!.GetValue<bool>());
-        Assert.Equal(5, updated.Value["limit"]!.GetValue<int>());
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(updated);
+            Assert.False(updated!.Value["enabled"]!.GetValue<bool>());
+            Assert.Equal(5, updated.Value["limit"]!.GetValue<int>());
+        });
+
         Assert.DoesNotContain("Invalid JSON", cut.Markup);
     }
 
@@ -98,7 +102,7 @@ public class PillTests : BunitContext
             .Add(p => p.OnChanged, _ => changeCount++));
 
         cut.Find(".pill-header").Click();
-        cut.Find("textarea.config-value-input").Input("""{"enabled":""");
+        cut.Find("textarea.config-value-input").Change("""{"enabled":""");
 
         Assert.Equal(0, changeCount);
         Assert.True(config.Value["enabled"]!.GetValue<bool>());
@@ -125,7 +129,7 @@ public class PillTests : BunitContext
         cut.Find(".pill-header").Click();
         var editor = cut.Find("textarea.config-value-input");
 
-        editor.Input("""{"enabled":false,"limit":10}""");
+        editor.Change("""{"enabled":false,"limit":10}""");
         cut.Find("button.value-format-button").Click();
 
         Assert.Contains(Environment.NewLine, GetEditorText(cut));
@@ -166,7 +170,7 @@ public class PillTests : BunitContext
             .Add(p => p.OnChanged, _ => changeCount++));
 
         cut.Find(".pill-header").Click();
-        cut.Find("textarea.config-value-input").Input("""{"enabled":"yes"}""");
+        cut.Find("textarea.config-value-input").Change("""{"enabled":"yes"}""");
 
         Assert.Equal(0, changeCount);
         Assert.True(config.Value["enabled"]!.GetValue<bool>());
@@ -193,7 +197,7 @@ public class PillTests : BunitContext
             .Add(p => p.OnChanged, c => updated = c));
 
         cut.Find(".pill-header").Click();
-        cut.Find("textarea.config-schema-input").Input("""
+        cut.Find("textarea.config-schema-input").Change("""
         {
           "type": "object",
           "required": ["enabled"],
@@ -203,8 +207,12 @@ public class PillTests : BunitContext
         }
         """);
 
-        Assert.NotNull(updated);
-        Assert.Equal("object", updated!.Schema["type"]!.GetValue<string>());
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(updated);
+            Assert.Equal("object", updated!.Schema["type"]!.GetValue<string>());
+        });
+
         Assert.DoesNotContain("must be", cut.Markup);
     }
 
