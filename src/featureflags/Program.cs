@@ -41,7 +41,34 @@ builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 
+const string WebsiteCorsPolicy = "WebsiteCorsPolicy";
+const string WebsiteOrigin = "https://logoas.xyz";
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(WebsiteCorsPolicy, policy =>
+    {
+        policy
+            .SetIsOriginAllowed(origin =>
+            {
+                if (origin == WebsiteOrigin)
+                    return true;
+
+                if (!builder.Environment.IsDevelopment())
+                    return false;
+
+                return Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+                    && (uri.Host == "localhost" || uri.Host == "127.0.0.1" || uri.Host == "::1")
+                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+            })
+            .WithMethods("GET")
+            .WithHeaders("user", "X-API-Key");
+    });
+});
+
 var app = builder.Build();
+
+app.UseCors();
 
 if (!app.Environment.IsDevelopment())
 {
@@ -97,7 +124,7 @@ app.MapGet("/api/featureflags", async (
         .ToDictionaryAsync(c => c.Name, c => c.Value);
 
     return Results.Ok(response);
-});
+}).RequireCors(WebsiteCorsPolicy);
 
 using (var scope = app.Services.CreateScope())
 {
