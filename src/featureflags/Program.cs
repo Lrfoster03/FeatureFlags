@@ -60,15 +60,9 @@ builder.Services.AddCors(options =>
                 if (allowedOrigins.Contains(origin))
                     return true;
 
-                if (!builder.Environment.IsDevelopment())
-                    return false;
-
                 return Uri.TryCreate(origin, UriKind.Absolute, out var uri)
-                    && (uri.Host == "localhost"
-                        || uri.Host == "127.0.0.1"
-                        || uri.Host == "::1")
-                    && (uri.Scheme == Uri.UriSchemeHttp
-                        || uri.Scheme == Uri.UriSchemeHttps);
+                    && (uri.Host == "localhost" || uri.Host == "127.0.0.1")
+                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
             })
             .WithMethods("GET")
             .WithHeaders("user", "X-API-Key");
