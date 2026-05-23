@@ -42,7 +42,13 @@ builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 
 const string WebsiteCorsPolicy = "WebsiteCorsPolicy";
-const string WebsiteOrigin = "https://logoas.xyz";
+
+var allowedOrigins = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+{
+    "https://logoas.xyz",
+    "https://www.logoas.xyz",
+    "https://lrfoster03.github.io"
+};
 
 builder.Services.AddCors(options =>
 {
@@ -51,15 +57,18 @@ builder.Services.AddCors(options =>
         policy
             .SetIsOriginAllowed(origin =>
             {
-                if (origin == WebsiteOrigin)
+                if (allowedOrigins.Contains(origin))
                     return true;
 
                 if (!builder.Environment.IsDevelopment())
                     return false;
 
                 return Uri.TryCreate(origin, UriKind.Absolute, out var uri)
-                    && (uri.Host == "localhost" || uri.Host == "127.0.0.1" || uri.Host == "::1")
-                    && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+                    && (uri.Host == "localhost"
+                        || uri.Host == "127.0.0.1"
+                        || uri.Host == "::1")
+                    && (uri.Scheme == Uri.UriSchemeHttp
+                        || uri.Scheme == Uri.UriSchemeHttps);
             })
             .WithMethods("GET")
             .WithHeaders("user", "X-API-Key");
