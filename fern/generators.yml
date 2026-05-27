@@ -25,3 +25,10 @@ groups:
         output:
           location: local-file-system
           path: ../sdks/csharp
+  java-sdk:
+    generators:
+      - name: fern-java-sdk
+        version: 4.8.11
+        output:
+          location: local-file-system
+          path: ../sdks/java/src/main/java/
