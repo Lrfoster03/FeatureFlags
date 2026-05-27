@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/LogoasApi.Test/LogoasApi.Test.csproj" />
+  <Project Path="src/LogoasApi/LogoasApi.csproj" />
+</Solution>
