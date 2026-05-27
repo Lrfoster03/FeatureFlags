@@ -5,6 +5,8 @@ using FeatureFlags.Services;
 using Microsoft.EntityFrameworkCore;
 using FeatureFlags.Core;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.OpenApi;
+using System.Text.Json.Nodes;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +18,7 @@ builder.Services.AddRazorPages();
 
 var connectionString = builder.Configuration.GetConnectionString(FeatureFlagDbContextFactory.ConnectionStringName)
     ?? FeatureFlagDbContextFactory.DefaultConnectionString;
+var skipDatabaseMigrations = builder.Configuration.GetValue<bool>("SkipDatabaseMigrations");
 
 builder.Services.AddDbContext<FeatureFlagDbContext>(options =>
     options.UseNpgsql(connectionString));
@@ -69,7 +72,131 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, _, _) =>
+    {
+        document.Info = new()
+        {
+            Title = "Feature Flags API",
+            Summary = "Public API for evaluating project feature flags and remote configs.",
+            Description = "The Feature Flags API returns evaluated feature flag values and project configuration values for a client environment. It is designed to be consumed by websites, applications, and generated SDKs.",
+            Version = "1.0.0"
+        };
+
+        document.Servers =
+        [
+            new() { Url = "https://featureflags.logoas.xyz", Description = "Production" },
+            new() { Url = "http://localhost:8080", Description = "Local Docker default" }
+        ];
+
+        document.Components ??= new();
+        document.Components.SecuritySchemes ??= new Dictionary<string, IOpenApiSecurityScheme>();
+        document.Components.SecuritySchemes["ApiKeyAuth"] = new OpenApiSecurityScheme
+        {
+            Type = SecuritySchemeType.ApiKey,
+            In = ParameterLocation.Header,
+            Name = "X-API-Key",
+            Description = "Client environment API key."
+        };
+
+        return Task.CompletedTask;
+    });
+
+    options.AddOperationTransformer((operation, _, _) =>
+    {
+        if (operation.OperationId != "getFeatureFlags")
+            return Task.CompletedTask;
+
+        operation.Summary = "Get evaluated feature flags";
+        operation.Description = "Returns all feature flags and configs for the project environment associated with the provided client API key. Feature flag values are evaluated for the optional user identifier.";
+        operation.Security =
+        [
+            new OpenApiSecurityRequirement
+            {
+                [new OpenApiSecuritySchemeReference("ApiKeyAuth", null, null)] = []
+            }
+        ];
+
+        operation.Parameters ??= [];
+        if (!operation.Parameters.Any(parameter => parameter.Name == "user" && parameter.In == ParameterLocation.Header))
+        {
+            operation.Parameters.Add(new OpenApiParameter
+            {
+                Name = "user",
+                In = ParameterLocation.Header,
+                Required = false,
+                Description = "Stable application user identifier used for percentage rollout evaluation. Send an empty value or omit this header for anonymous evaluation.",
+                Schema = new OpenApiSchema { Type = JsonSchemaType.String },
+                Example = "user_123"
+            });
+        }
+
+        if (operation.Responses is not null
+            && operation.Responses.TryGetValue("200", out var successResponse)
+            && successResponse.Content is not null
+            && successResponse.Content.TryGetValue("application/json", out var jsonResponse))
+        {
+            jsonResponse.Examples ??= new Dictionary<string, IOpenApiExample>();
+            jsonResponse.Examples["success"] = new OpenApiExample
+            {
+                Summary = "Feature flags response",
+                Value = JsonNode.Parse("""
+                {
+                  "featureFlags": {
+                    "NewUI": true,
+                    "BetaCheckout": false
+                  },
+                  "configs": {
+                    "Theme": {
+                      "color": "blue",
+                      "layout": "compact"
+                    },
+                    "Checkout": {
+                      "maxItems": 10,
+                      "allowCoupons": true
+                    }
+                  }
+                }
+                """)!
+            };
+        }
+
+        if (operation.Responses is not null
+            && operation.Responses.TryGetValue("401", out var unauthorizedResponse))
+        {
+            unauthorizedResponse.Description = "The X-API-Key header is missing, invalid, or revoked.";
+        }
+
+        return Task.CompletedTask;
+    });
+
+    options.AddSchemaTransformer((schema, context, _) =>
+    {
+        if (context.JsonTypeInfo.Type == typeof(FeatureFlagsResponse))
+        {
+            schema.Description = "Evaluated feature flags and dynamic configs.";
+
+            if (schema.Properties is not null
+                && schema.Properties.TryGetValue("featureFlags", out var featureFlagsSchema))
+            {
+                featureFlagsSchema.Description = "Map of feature flag names to evaluated boolean values.";
+            }
+
+            if (schema.Properties is not null
+                && schema.Properties.TryGetValue("configs", out var configsSchema))
+            {
+                configsSchema.Description = "Map of config names to arbitrary JSON objects.";
+            }
+        }
+
+        return Task.CompletedTask;
+    });
+});
+
 var app = builder.Build();
+
+app.MapOpenApi("/openapi/v1.json");
 
 app.UseCors();
 
@@ -127,30 +254,38 @@ app.MapGet("/api/featureflags", async (
         .ToDictionaryAsync(c => c.Name, c => c.Value);
 
     return Results.Ok(response);
-}).RequireCors(WebsiteCorsPolicy);
+})
+.WithName("getFeatureFlags")
+.WithTags("Feature Flags")
+.Produces<FeatureFlagsResponse>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status401Unauthorized)
+.RequireCors(WebsiteCorsPolicy);
 
-using (var scope = app.Services.CreateScope())
+if (!skipDatabaseMigrations)
 {
-    var flagDb = scope.ServiceProvider.GetRequiredService<FeatureFlagDbContext>();
-
-    if (app.Environment.IsDevelopment() && flagDb.Database.HasPendingModelChanges())
+    using (var scope = app.Services.CreateScope())
     {
-        throw new InvalidOperationException(
-            "EF model changes detected without a migration. " +
-            "Run: dotnet ef migrations add <Name> --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj");
+        var flagDb = scope.ServiceProvider.GetRequiredService<FeatureFlagDbContext>();
+
+        if (app.Environment.IsDevelopment() && flagDb.Database.HasPendingModelChanges())
+        {
+            throw new InvalidOperationException(
+                "EF model changes detected without a migration. " +
+                "Run: dotnet ef migrations add <Name> --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj");
+        }
+
+        flagDb.Database.Migrate();
+
+        var appDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        if (app.Environment.IsDevelopment() && appDb.Database.HasPendingModelChanges())
+        {
+            throw new InvalidOperationException(
+                "EF model changes detected without a migration. " +
+                "Run: dotnet ef migrations add <Name> --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj");
+        }
+
+        appDb.Database.Migrate();
     }
-
-    flagDb.Database.Migrate();
-
-    var appDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    if (app.Environment.IsDevelopment() && appDb.Database.HasPendingModelChanges())
-    {
-        throw new InvalidOperationException(
-            "EF model changes detected without a migration. " +
-            "Run: dotnet ef migrations add <Name> --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj");
-    }
-
-    appDb.Database.Migrate();
 }
 
 

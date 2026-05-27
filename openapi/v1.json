@@ -1,0 +1,127 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Feature Flags API",
+    "summary": "Public API for evaluating project feature flags and remote configs.",
+    "description": "The Feature Flags API returns evaluated feature flag values and project configuration values for a client environment. It is designed to be consumed by websites, applications, and generated SDKs.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://featureflags.logoas.xyz",
+      "description": "Production"
+    },
+    {
+      "url": "http://localhost:8080",
+      "description": "Local Docker default"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Feature Flags",
+      "description": "Evaluate feature flags and remote configuration for a project environment."
+    }
+  ],
+  "paths": {
+    "/api/featureflags": {
+      "get": {
+        "tags": [
+          "Feature Flags"
+        ],
+        "operationId": "getFeatureFlags",
+        "summary": "Get evaluated feature flags",
+        "description": "Returns all feature flags and configs for the project environment associated with the provided client API key. Feature flag values are evaluated for the optional user identifier.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user",
+            "in": "header",
+            "required": false,
+            "description": "Stable application user identifier used for percentage rollout evaluation. Send an empty value or omit this header for anonymous evaluation.",
+            "schema": {
+              "type": "string",
+              "example": "user_123"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Evaluated feature flags and configs for the client environment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureFlagsResponse"
+                },
+                "examples": {
+                  "success": {
+                    "summary": "Feature flags response",
+                    "value": {
+                      "featureFlags": {
+                        "NewUI": true,
+                        "BetaCheckout": false
+                      },
+                      "configs": {
+                        "Theme": {
+                          "color": "blue",
+                          "layout": "compact"
+                        },
+                        "Checkout": {
+                          "maxItems": 10,
+                          "allowCoupons": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The X-API-Key header is missing, invalid, or revoked."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Client environment API key."
+      }
+    },
+    "schemas": {
+      "FeatureFlagsResponse": {
+        "type": "object",
+        "description": "Evaluated feature flags and dynamic configs.",
+        "required": [
+          "featureFlags",
+          "configs"
+        ],
+        "properties": {
+          "featureFlags": {
+            "type": "object",
+            "description": "Map of feature flag names to evaluated boolean values.",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "configs": {
+            "type": "object",
+            "description": "Map of config names to arbitrary JSON objects.",
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    }
+  }
+}
