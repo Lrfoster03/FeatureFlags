@@ -1,0 +1,20 @@
+services:
+  featureflags:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: featureflags:ci-smoke
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+  postgres:
+    restart: "no"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U featureflags -d featureflags"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
