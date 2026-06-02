@@ -7,7 +7,8 @@ using FeatureFlags.Core;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.OpenApi;
 using System.Text.Json.Nodes;
-
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,7 +24,7 @@ var skipDatabaseMigrations = builder.Configuration.GetValue<bool>("SkipDatabaseM
 builder.Services.AddDbContext<FeatureFlagDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddDbContextFactory<FeatureFlagDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseNpgsql(connectionString), ServiceLifetime.Scoped);
 builder.Services.AddScoped<IFeatureFlagConfirmationService, FeatureFlagConfirmationService>();
 builder.Services.AddScoped<IProjectPermissionService, ProjectPermissionService>();
 builder.Services.AddScoped<IProjectProvisioningService, ProjectProvisioningService>();
@@ -43,6 +44,38 @@ builder.Services
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy("api-key", httpContext =>
+    {
+        var apiKey = httpContext.Request.Headers["X-API-Key"].FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return RateLimitPartition.GetFixedWindowLimiter(
+                partitionKey: "anonymous",
+                factory: _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 10,
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0
+                });
+        }
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: apiKey,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = builder.Configuration.GetValue<int>("RateLimits:PermitLimit"), // Max Requests
+                Window = TimeSpan.FromSeconds(builder.Configuration.GetValue<int>("RateLimits:WindowSeconds")), // Seconds
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = builder.Configuration.GetValue<int>("RateLimits:QueueLimit") // Max Queue of requests before being rejectedx
+            });
+    });
+});
 
 const string WebsiteCorsPolicy = "WebsiteCorsPolicy";
 
@@ -196,6 +229,7 @@ builder.Services.AddOpenApi(options =>
 
 var app = builder.Build();
 
+
 app.MapOpenApi("/openapi/v1.json");
 
 app.UseCors();
@@ -218,6 +252,8 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.MapRazorPages();
+
+app.UseRateLimiter();
 
 app.MapGet("/healthz", () => Results.Ok(new { status = "healthy" }));
 
@@ -259,6 +295,7 @@ app.MapGet("/api/featureflags", async (
 .WithTags("Feature Flags")
 .Produces<FeatureFlagsResponse>(StatusCodes.Status200OK)
 .Produces(StatusCodes.Status401Unauthorized)
+.RequireRateLimiting("api-key")
 .RequireCors(WebsiteCorsPolicy);
 
 if (!skipDatabaseMigrations)
@@ -288,5 +325,6 @@ if (!skipDatabaseMigrations)
     }
 }
 
-
 app.Run();
+
+public partial class Program { }
