@@ -17,13 +17,13 @@ public class RateLimitTests(WebApplicationFactory<Program> factory) : IClassFixt
 
         for (var i = 0; i < 10; i++)
         {
-            using var allowedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/featureflags");
+            using var allowedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/featureflags");
             var allowedResponse = await client.SendAsync(allowedRequest);
 
             Assert.Equal(HttpStatusCode.Unauthorized, allowedResponse.StatusCode);
         }
 
-        using var limitedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/featureflags");
+        using var limitedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/v1/featureflags");
         var limited = await client.SendAsync(limitedRequest);
         Assert.Equal(HttpStatusCode.TooManyRequests, limited.StatusCode);
     }

@@ -259,9 +259,22 @@ app.MapGet("/healthz", () => Results.Ok(new { status = "healthy" }));
 
 app.MapGet("/", () => Results.Redirect("/projects"));
 
-app.MapGet("/api/featureflags", async (
+app.MapGet("/api/v1/featureflags", GetFeatureFlags)
+    .WithName("getFeatureFlags")
+    .WithTags("Feature Flags")
+    .Produces<FeatureFlagsResponse>(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status401Unauthorized)
+    .RequireRateLimiting("api-key")
+    .RequireCors(WebsiteCorsPolicy);
+
+app.MapGet("/api/featureflags", GetFeatureFlags)
+    .ExcludeFromDescription()
+    .RequireRateLimiting("api-key")
+    .RequireCors(WebsiteCorsPolicy);
+
+static async Task<IResult> GetFeatureFlags(
     HttpContext http,
-    FeatureFlagDbContext db) =>
+    FeatureFlagDbContext db)
 {
     var clientKeyValue = http.Request.Headers["X-API-Key"].FirstOrDefault();
 
@@ -290,13 +303,7 @@ app.MapGet("/api/featureflags", async (
         .ToDictionaryAsync(c => c.Name, c => c.Value);
 
     return Results.Ok(response);
-})
-.WithName("getFeatureFlags")
-.WithTags("Feature Flags")
-.Produces<FeatureFlagsResponse>(StatusCodes.Status200OK)
-.Produces(StatusCodes.Status401Unauthorized)
-.RequireRateLimiting("api-key")
-.RequireCors(WebsiteCorsPolicy);
+}
 
 if (!skipDatabaseMigrations)
 {

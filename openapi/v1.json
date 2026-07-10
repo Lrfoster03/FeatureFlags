@@ -23,7 +23,7 @@
     }
   ],
   "paths": {
-    "/api/featureflags": {
+    "/api/v1/featureflags": {
       "get": {
         "tags": [
           "Feature Flags"

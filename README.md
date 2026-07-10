@@ -130,7 +130,7 @@ SkipDatabaseMigrations=true dotnet run \
 ### Get all feature flags
 
 ```bash
-curl --location 'http://localhost:<selected-port>/api/featureflags' \
+curl --location 'http://localhost:<selected-port>/api/v1/featureflags' \
   --header 'X-API-Key: <client-key>' \
   --header 'user: <userID>'
 ```
