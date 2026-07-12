@@ -1,0 +1,13 @@
+{
+  "name": "featureflags-visual-tests",
+  "private": true,
+  "scripts": {
+    "test:visual": "playwright test",
+    "chromatic": "chromatic --playwright --exit-zero-on-changes"
+  },
+  "devDependencies": {
+    "@chromatic-com/playwright": "^0.14.10",
+    "@playwright/test": "^1.61.1",
+    "chromatic": "^18.0.1"
+  }
+}

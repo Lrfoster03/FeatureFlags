@@ -58,5 +58,10 @@ nunit-*.xml
 
 coveragereport/
 
+# Playwright / Chromatic
+node_modules/
+playwright-report/
+test-results/
+
 # Env file
 *.env*

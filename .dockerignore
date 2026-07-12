@@ -4,5 +4,8 @@
 **/bin/
 **/obj/
 **/.DS_Store
+node_modules/
+playwright-report/
+test-results/
 featureflags.db
 src/featureflags/featureflags.db
