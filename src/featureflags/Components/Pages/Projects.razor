@@ -1,5 +1,5 @@
 @page "/projects"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize]
 
 @using System.ComponentModel.DataAnnotations
