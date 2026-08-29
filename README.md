@@ -98,7 +98,7 @@ Notes:
 * The app still applies EF Core migrations automatically on startup
 * `scripts/docker-up.sh` picks the first available host port from `8080` to `8090`
 * You can override the search range: `./scripts/docker-up.sh 8085 8100`
-* Running `docker compose up --build` directly still defaults to host port `8080`; set `HOST_PORT` yourself if you want to pick a different one
+* The script builds the current checkout and starts only the app and database; the production Caddy proxy is not started locally
 
 ---
 

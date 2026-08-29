@@ -24,4 +24,7 @@ port="$(find_open_port)" || {
 }
 
 echo "Using host port ${port} for container port 8080."
-HOST_PORT="$port" docker compose up --build
+HOST_PORT="$port" docker compose \
+  -f docker-compose.yml \
+  -f .github/compose.smoke.yml \
+  up --build featureflags
