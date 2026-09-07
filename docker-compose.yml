@@ -7,6 +7,13 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      InvitationEmail__PublicBaseUrl: ${InvitationEmail__PublicBaseUrl:-}
+      InvitationEmail__From: ${InvitationEmail__From:-}
+      InvitationEmail__Host: ${InvitationEmail__Host:-}
+      InvitationEmail__Port: ${InvitationEmail__Port:-587}
+      InvitationEmail__Security: ${InvitationEmail__Security:-StartTls}
+      InvitationEmail__Username: ${InvitationEmail__Username:-}
+      InvitationEmail__Password: ${InvitationEmail__Password:-}
       ConnectionStrings__FeatureFlags: Host=postgres;Port=5432;Database=featureflags;Username=featureflags;Password=${POSTGRES_PASSWORD}
       ConnectionStrings__Application: Host=postgres;Port=5432;Database=featureflags;Username=featureflags;Password=${POSTGRES_PASSWORD}
     expose:
