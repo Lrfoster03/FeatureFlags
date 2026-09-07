@@ -1,14 +1,30 @@
-import { expect, test } from '@playwright/test';
+import { expect, takeSnapshot, test } from '@chromatic-com/playwright';
 import { randomUUID } from 'node:crypto';
 
-test.use({ timezoneId: 'America/Los_Angeles' });
+// Capture the two history states explicitly, without an extra end-of-test snapshot.
+test.use({ timezoneId: 'America/Los_Angeles', disableAutoSnapshot: true });
 
-test('project history shows saved diffs, preserves drafts, and stays within the selected project', async ({ page }) => {
+async function snapshotHistory(page, name, testInfo) {
+  // Keep generated account details and server timestamps stable in visual baselines.
+  await page.locator('.user-email, .history-description > strong:first-child').evaluateAll(elements => {
+    elements.forEach(element => { element.textContent = 'audit@example.com'; });
+  });
+  await page.locator('dialog[open] time[data-audit-time]').evaluateAll(elements => {
+    elements.forEach(element => { element.dateTime = '2026-07-01T19:00:00.000Z'; });
+  });
+  await page.evaluate(async () => {
+    const { formatTimes } = await import('/Components/Shared/ProjectHistory.razor.js');
+    formatTimes(document.querySelector('dialog[open]'));
+  });
+  await takeSnapshot(page, name, testInfo);
+}
+
+test('project history shows saved diffs, preserves drafts, and stays within the selected project', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   const email = `audit-${randomUUID()}@example.com`;
-  const projectName = `Audit test ${randomUUID()}`;
-  const otherProjectName = `Separate ${randomUUID()}`;
+  const projectName = 'Audit test project';
+  const otherProjectName = 'Separate project';
   await page.goto('/Identity/Account/Register');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill('AuditTest1!');
@@ -43,9 +59,9 @@ test('project history shows saved diffs, preserves drafts, and stays within the 
   await expect(modal.locator('.history-field')).toContainText('Rollout');
   await expect(modal.locator('.history-field')).toContainText('25%');
   await expect(modal.locator('.history-field')).not.toContainText('80%');
-  await expect(modal.locator('[data-audit-clock]').first()).toContainText(/\d+:\d{2}:\d{2}.*PDT/);
+  await expect(modal.locator('[data-audit-clock]').first()).toContainText(/\d+:\d{2}:\d{2}.*P[SD]T/);
   await expect(modal).not.toContainText('America/Los_Angeles');
-  await page.screenshot({ path: 'test-results/audit-history-desktop.png', fullPage: true });
+  await snapshotHistory(page, 'History desktop', testInfo);
   await modal.getByRole('button', { name: 'Close project history' }).focus();
   await page.keyboard.press('Shift+Tab');
   expect(await modal.evaluate(element => element.contains(document.activeElement))).toBe(true);
@@ -90,7 +106,7 @@ test('project history shows saved diffs, preserves drafts, and stays within the 
   await page.setViewportSize({ width: 390, height: 844 });
   await modal.locator('.history-row').first().click();
   await expect(modal.locator('.history-row').first()).toHaveAttribute('aria-expanded', 'true');
-  await page.screenshot({ path: 'test-results/audit-history-mobile.png' });
+  await snapshotHistory(page, 'History mobile', testInfo);
   const box = await modal.boundingBox();
   expect(box.width).toBe(390);
   expect(box.height).toBe(844);
