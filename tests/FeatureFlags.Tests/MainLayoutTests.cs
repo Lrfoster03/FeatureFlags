@@ -135,7 +135,7 @@ public class MainLayoutTests : BunitContext
                     }
                 }
             });
-            context.SaveChanges();
+            context.SaveSeedChanges();
         }
 
         public void Dispose()
