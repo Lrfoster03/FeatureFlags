@@ -116,6 +116,75 @@ public class FeatureFlagDbContextTests
     }
 
     [Fact]
+    public async Task SaveChanges_Rejects_Stale_Flag_Updates()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var first = CreateContext(connection);
+        await first.Database.EnsureCreatedAsync();
+        var environmentId = await SeedProjectEnvironmentAsync(first);
+        var flag = new FeatureFlag { Name = "Checkout", ProjectEnvironmentId = environmentId };
+        first.FeatureFlags.Add(flag);
+        await first.SaveChangesAsync();
+        Assert.Equal(1, flag.Revision);
+
+        await using var stale = CreateContext(connection);
+        var staleFlag = await stale.FeatureFlags.SingleAsync();
+        flag.PercentageRollout = 25;
+        first.SaveChanges();
+        Assert.Equal(2, flag.Revision);
+        Assert.Equal(0, first.SaveChanges());
+        Assert.Equal(2, flag.Revision);
+        Assert.Equal(1, (await first.ProjectEnvironments.SingleAsync()).Revision);
+
+        staleFlag.PercentageRollout = 75;
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync());
+        Assert.Equal(1, stale.Entry(staleFlag).Property(f => f.Revision).OriginalValue);
+        Assert.Equal(2, staleFlag.Revision);
+
+        await using var verify = CreateContext(connection);
+        var saved = await verify.FeatureFlags.SingleAsync();
+        Assert.Equal(25, saved.PercentageRollout);
+        Assert.Equal(2, saved.Revision);
+    }
+
+    [Fact]
+    public async Task SaveChanges_Rejects_Stale_Config_Json_Updates_And_Deletes()
+    {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await using var first = CreateContext(connection);
+        await first.Database.EnsureCreatedAsync();
+        var environmentId = await SeedProjectEnvironmentAsync(first);
+        var config = new FeatureConfig { Name = "Checkout", ProjectEnvironmentId = environmentId,
+            Value = JsonNode.Parse("{\"checkout\":{\"limit\":5}}")!.AsObject() };
+        first.Configs.Add(config);
+        await first.SaveChangesAsync();
+        Assert.Equal(1, config.Revision);
+
+        await using var stale = CreateContext(connection);
+        var staleConfig = await stale.Configs.SingleAsync();
+        config.Value["checkout"]!["limit"] = 10;
+        await first.SaveChangesAsync();
+        Assert.Equal(2, config.Revision);
+        config.Schema["type"] = "object";
+        await first.SaveChangesAsync();
+        Assert.Equal(3, config.Revision);
+
+        staleConfig.Value["checkout"]!["limit"] = 20;
+        Assert.Throws<DbUpdateConcurrencyException>(() => stale.SaveChanges());
+        stale.Configs.Remove(staleConfig);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync());
+
+        await using var verify = CreateContext(connection);
+        var saved = await verify.Configs.SingleAsync();
+        Assert.Equal(10, saved.Value["checkout"]!["limit"]!.GetValue<int>());
+        Assert.Equal("object", saved.Schema["type"]!.GetValue<string>());
+        Assert.Equal(3, saved.Revision);
+    }
+
+    [Fact]
     public void Factory_Creates_Postgres_DbContext_With_Expected_Connection_String()
     {
         var factory = new FeatureFlagDbContextFactory();
