@@ -1,0 +1,100 @@
+@page "/invitations/accept"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@using FeatureFlags.Data
+@using FeatureFlags.Services
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
+@inject ProjectInvitations Invitations
+@inject IDbContextFactory<ApplicationDbContext> IdentityFactory
+@inject AuthenticationStateProvider Authentication
+@inject NavigationManager Navigation
+
+<PageTitle>Project invitation</PageTitle>
+<HeadContent><meta name="referrer" content="no-referrer" /></HeadContent>
+
+<div class="container py-4" style="max-width: 560px;">
+    <h1>Project invitation</h1>
+    @if (error is not null)
+    {
+        <div class="alert alert-danger" role="alert">@error</div>
+    }
+    @if (invitation is not null)
+    {
+        <div class="card p-4 mt-3">
+            <h2 class="h4">Join @invitation.ProjectName</h2>
+            <p>You have been invited as a <strong>@invitation.Role</strong>.</p>
+            <p>This invitation was sent to <strong>@invitation.Email</strong>.</p>
+            @if (!signedIn)
+            {
+                <p>@(hasAccount ? "Log in to review and accept your invitation." : "Create an account to review and accept your invitation.")</p>
+                <a class="btn btn-primary mb-2" href="@AuthUrl(hasAccount ? "Login" : "Register")">@(hasAccount ? "Log in" : "Create account")</a>
+                <a href="@AuthUrl(hasAccount ? "Register" : "Login")">@(hasAccount ? "Create an account" : "Already have an account? Log in")</a>
+            }
+            else if (!emailMatches)
+            {
+                <p role="alert">You are signed in as @currentEmail. Switch to the invited account to join.</p>
+                <form method="post" action="/Identity/Account/Logout">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="returnUrl" value="@InvitationPath" />
+                    <button class="btn btn-primary" type="submit">Switch account</button>
+                </form>
+            }
+            else
+            {
+                <button class="btn btn-primary" disabled="@saving" @onclick="JoinAsync">@(saving ? "Joining…" : "Join project")</button>
+            }
+        </div>
+    }
+    else if (error is null)
+    {
+        <p role="status">Loading invitation…</p>
+    }
+    <a class="d-inline-block mt-3" href="/projects">Back to projects</a>
+</div>
+
+@code {
+    [Parameter, SupplyParameterFromQuery(Name = "token")] public string? Token { get; set; }
+    private InvitationDetails? invitation;
+    private string? error;
+    private string? currentEmail;
+    private bool signedIn, emailMatches, hasAccount, saving;
+    private readonly Guid operationId = Guid.NewGuid();
+    private string InvitationPath => "/invitations/accept?token=" + Uri.EscapeDataString(Token ?? "");
+    private string AuthUrl(string page) => $"/Identity/Account/{page}?returnUrl={Uri.EscapeDataString(InvitationPath)}&invitationToken={Uri.EscapeDataString(Token ?? "")}";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        invitation = null; error = null;
+        try
+        {
+            invitation = await Invitations.PreviewAsync(Token ?? "");
+            var principal = (await Authentication.GetAuthenticationStateAsync()).User;
+            signedIn = principal.Identity?.IsAuthenticated == true;
+            await using var identity = await IdentityFactory.CreateDbContextAsync();
+            var normalized = ProjectInvitations.NormalizeEmail(invitation.Email);
+            hasAccount = await identity.Users.AnyAsync(u => u.NormalizedEmail == normalized);
+            var id = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+            currentEmail = signedIn ? await identity.Users.Where(u => u.Id == id).Select(u => u.Email).SingleOrDefaultAsync() : null;
+            emailMatches = currentEmail is not null && ProjectInvitations.NormalizeEmail(currentEmail) == normalized;
+        }
+        catch (ArgumentException ex) { error = ex.Message; }
+        catch (Exception) { error = "Unable to load this invitation. Please try again."; invitation = null; }
+    }
+
+    private async Task JoinAsync()
+    {
+        if (saving) return;
+        saving = true; error = null;
+        try
+        {
+            var projectId = await Invitations.AcceptAsync(Token ?? "", operationId);
+            Navigation.NavigateTo($"/projects/{Uri.EscapeDataString(projectId)}/home", forceLoad: true);
+        }
+        catch (ArgumentException ex) { error = ex.Message; }
+        catch (UnauthorizedAccessException ex) { error = ex.Message; }
+        catch (DbUpdateException) { error = "The invitation changed. Refresh this page and try again."; }
+        catch (Exception) { error = "Unable to join the project. Please try again."; }
+        finally { saving = false; }
+    }
+}
