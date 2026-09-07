@@ -4,6 +4,7 @@
 @using FeatureFlags.Data
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
+@using FeatureFlags.Components.Shared
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IDbContextFactory<FeatureFlagDbContext> DbFactory
 @inject NavigationManager Navigation
@@ -43,6 +44,10 @@
                 <Authorized>
                     <div class="app-header-right">
                         <span class="user-email">@context.User.Identity?.Name</span>
+                        @if (CurrentProjectId is not null && availableProjects.Any(p => p.Id == CurrentProjectId))
+                        {
+                            <ProjectHistory ProjectId="@CurrentProjectId" @rendermode="InteractiveServer" @key="CurrentProjectId" />
+                        }
                         <form method="post" action="/Identity/Account/Logout" class="d-inline">
                             <AntiforgeryToken />
                             <button type="submit" class="btn btn-outline-secondary btn-sm">Logout</button>

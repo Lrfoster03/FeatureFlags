@@ -39,6 +39,32 @@ public class ProjectMutationTests
     }
 
     [Fact]
+    public async Task Multi_resource_save_is_atomic_and_groups_events_and_delete_keeps_snapshot()
+    {
+        await using var f = await Fixture.CreateAsync();
+        await f.Changes.AddItemAsync(f.Project.Id, f.EnvironmentId, true, Guid.NewGuid());
+        await using var db = f.Factory.CreateDbContext();
+        var config = await db.Configs.AsNoTracking().SingleAsync();
+        var flag = await f.FlagAsync();
+        flag.PercentageRollout = 70; config.Name = "";
+        await Assert.ThrowsAsync<ArgumentException>(() => f.Changes.SaveItemsAsync(f.Project.Id, [flag, config], Guid.NewGuid()));
+        Assert.Equal(10, (await f.FlagAsync()).PercentageRollout);
+        Assert.Single(await db.AuditEvents.ToListAsync());
+        config.Name = "Renamed config";
+        var operation = Guid.NewGuid();
+        var events = await f.Changes.SaveItemsAsync(f.Project.Id, [flag, config], operation);
+        Assert.Equal(2, events.Count);
+        Assert.All(events, e => Assert.Equal(operation, e.OperationId));
+        Assert.Single(events.Select(e => e.OccurredAtUtc).Distinct());
+        config = await db.Configs.AsNoTracking().SingleAsync();
+        var deleted = Assert.Single(await f.Changes.DeleteItemAsync(f.Project.Id, config, Guid.NewGuid()));
+        Assert.Null(deleted.After);
+        Assert.Contains("Renamed config", deleted.Before);
+        Assert.Empty(await db.Configs.ToListAsync());
+        Assert.Equal(4, await db.AuditEvents.CountAsync());
+    }
+
+    [Fact]
     public async Task Config_schema_and_value_changes_share_one_event_and_formatting_is_ignored()
     {
         await using var f = await Fixture.CreateAsync();

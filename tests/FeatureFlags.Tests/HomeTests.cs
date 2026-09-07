@@ -329,6 +329,7 @@ public class HomeTests : BunitContext
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddSingleton<IDbContextFactory<ApplicationDbContext>>(new UnusedIdentityFactory());
         Services.AddScoped<ProjectChanges>();
+        Services.AddScoped<AuditHistory>();
         Services.AddAuthorization();
         Services.AddCascadingAuthenticationState();
         var authentication = new BunitAuthenticationStateProvider(

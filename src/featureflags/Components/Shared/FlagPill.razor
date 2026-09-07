@@ -46,6 +46,10 @@
         </div>
 
         <div class="d-flex align-items-center justify-content-end mt-3 mb-3 ms-3 me-3" @onclick:stopPropagation="true">
+            @if (!string.IsNullOrEmpty(ProjectId))
+            {
+                <div class="me-3 mb-3"><ProjectHistory ProjectId="@ProjectId" EntityType="flag" EntityId="@FeatureFlag.Id.ToString()" IconOnly="false" /></div>
+            }
             <Button Color="ButtonColor.Danger" Size="ButtonSize.Small" class="me-3 mb-3" @onclick="DeleteFeatureFlag">
                 <i class="bi bi-trash"></i> Delete
             </Button>
@@ -54,6 +58,7 @@
 </div>
 
 @code {
+    [Parameter] public string ProjectId { get; set; } = "";
     [Parameter]
     public FeatureFlag FeatureFlag { get; set; } = new();
 
