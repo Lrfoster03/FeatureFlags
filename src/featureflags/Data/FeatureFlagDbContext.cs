@@ -16,6 +16,41 @@ public class FeatureFlagDbContext(DbContextOptions<FeatureFlagDbContext> options
     public DbSet<ClientKey> ClientKeys => Set<ClientKey>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
+    private IReadOnlySet<object>? permittedWrites;
+
+    // Only ProjectMutation owns this two-phase save; callers cannot turn auditing off.
+    internal async Task<int> SaveMutationAsync(IReadOnlySet<object> covered, CancellationToken cancellationToken = default)
+    {
+        if (permittedWrites is not null)
+            throw new InvalidOperationException("A mutation save is already in progress.");
+        permittedWrites = covered;
+        try { return await SaveChangesAsync(cancellationToken); }
+        finally { permittedWrites = null; }
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        VerifyMutationWrites();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        VerifyMutationWrites();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void VerifyMutationWrites()
+    {
+        foreach (var entry in ChangeTracker.Entries().Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.Entity is AuditEvent && entry.State != EntityState.Added)
+                throw new InvalidOperationException("Audit history is append-only.");
+            if (permittedWrites is null || !permittedWrites.Contains(entry.Entity))
+                throw new InvalidOperationException("Project writes must use an audited ProjectMutation.");
+        }
+    }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var audit = modelBuilder.Entity<AuditEvent>();

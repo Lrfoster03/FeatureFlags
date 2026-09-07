@@ -17,6 +17,28 @@ namespace FeatureFlags.Tests;
 public class HomeTests : BunitContext
 {
     [Fact]
+    public async Task Adding_an_item_keeps_other_drafts_unsaved_and_discard_reloads_them()
+    {
+        using var database = new TestDatabase();
+        database.Seed(new FeatureFlag { Id = 1, Name = "Alpha", PercentageRollout = 10 });
+        Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(database.CreateContext));
+        AddAuthenticatedUser();
+        var cut = RenderHome(database);
+        var pill = cut.FindComponent<FlagPill>();
+        var draft = pill.Instance.FeatureFlag; draft.PercentageRollout = 75;
+        await cut.InvokeAsync(() => pill.Instance.OnChanged.InvokeAsync(draft));
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Add Flag").Click();
+        using var db = database.CreateContext();
+        Assert.Equal(10, db.FeatureFlags.Single(f => f.Id == 1).PercentageRollout);
+        Assert.Equal(75, cut.FindComponents<FlagPill>().Single(p => p.Instance.FeatureFlag.Id == 1).Instance.FeatureFlag.PercentageRollout);
+        Assert.Equal("flag.created", Assert.Single(db.AuditEvents).Action);
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Discard").Click();
+        Assert.Equal(10, cut.FindComponents<FlagPill>().Single(p => p.Instance.FeatureFlag.Id == 1).Instance.FeatureFlag.PercentageRollout);
+    }
+
+    [Fact]
     public void Home_Loads_Flags_And_Adds_New_Flag()
     {
         using var database = new TestDatabase();
@@ -27,6 +49,7 @@ public class HomeTests : BunitContext
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(database.CreateContext));
         AddAuthenticatedUser();
 
         var cut = RenderHome(database);
@@ -56,6 +79,7 @@ public class HomeTests : BunitContext
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(database.CreateContext));
         AddAuthenticatedUser();
 
         var cut = RenderHome(database);
@@ -63,6 +87,7 @@ public class HomeTests : BunitContext
         var updatedFlag = new FeatureFlag { Id = 1, Name = "  Beta  ", Description = "Updated", PercentageRollout = 50, ProjectEnvironmentId = database.EnvironmentId };
 
         await cut.InvokeAsync(() => firstPill.Instance.OnChanged.InvokeAsync(updatedFlag));
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Save").Click();
 
         Assert.Contains("A feature flag named 'Beta' already exists.", cut.Markup);
 
@@ -82,6 +107,7 @@ public class HomeTests : BunitContext
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(database.CreateContext));
         AddAuthenticatedUser();
 
         var cut = RenderHome(database);
@@ -92,6 +118,7 @@ public class HomeTests : BunitContext
         updatedFlag.PercentageRollout = 42;
 
         await cut.InvokeAsync(() => firstPill.Instance.OnChanged.InvokeAsync(updatedFlag));
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Save").Click();
 
         using var assertContext = database.CreateContext();
         var persisted = assertContext.FeatureFlags.Single(f => f.Id == 1);
@@ -113,6 +140,7 @@ public class HomeTests : BunitContext
         Services.AddScoped<FeatureFlagDbContext>(_ => new ThrowingFeatureFlagDbContext(
             database.CreateOptions(),
             throwOnModifiedSave: true));
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(() => new ThrowingFeatureFlagDbContext(database.CreateOptions(), throwOnModifiedSave: true)));
         AddAuthenticatedUser();
 
         var cut = RenderHome(database);
@@ -123,8 +151,9 @@ public class HomeTests : BunitContext
         updatedFlag.PercentageRollout = 25;
 
         await cut.InvokeAsync(() => firstPill.Instance.OnChanged.InvokeAsync(updatedFlag));
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Save").Click();
 
-        Assert.Contains("A feature flag named 'Gamma' already exists.", cut.Markup);
+        Assert.Contains("Failed to save changes.", cut.Markup);
     }
 
     [Fact]
@@ -136,6 +165,7 @@ public class HomeTests : BunitContext
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(database.CreateContext));
         AddAuthenticatedUser();
 
         var cut = RenderHome(database);
@@ -158,6 +188,7 @@ public class HomeTests : BunitContext
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
         Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(database.CreateContext));
         AddAuthenticatedUser();
 
         var cut = RenderHome(database);
@@ -180,6 +211,7 @@ public class HomeTests : BunitContext
         Services.AddScoped<FeatureFlagDbContext>(_ => new ThrowingFeatureFlagDbContext(
             database.CreateOptions(),
             throwOnDeletedSave: true));
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(() => new ThrowingFeatureFlagDbContext(database.CreateOptions(), throwOnDeletedSave: true)));
         AddAuthenticatedUser();
 
         var cut = RenderHome(database);
@@ -201,6 +233,7 @@ public class HomeTests : BunitContext
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
         Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(database.CreateContext));
         AddAuthenticatedUser();
 
         var cut = RenderHome(database);
@@ -233,6 +266,7 @@ public class HomeTests : BunitContext
         Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(false));
         Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
         Services.AddScoped(_ => database.CreateContext());
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(database.CreateContext));
         AddAuthenticatedUser();
 
         var cut = RenderHome(database);
@@ -255,6 +289,9 @@ public class HomeTests : BunitContext
 
     private void AddAuthenticatedUser()
     {
+        JSInterop.Mode = JSRuntimeMode.Loose;
+        Services.AddSingleton<IDbContextFactory<ApplicationDbContext>>(new UnusedIdentityFactory());
+        Services.AddScoped<ProjectChanges>();
         Services.AddAuthorization();
         Services.AddCascadingAuthenticationState();
         Services.AddSingleton<AuthenticationStateProvider>(
@@ -316,7 +353,7 @@ public class HomeTests : BunitContext
             };
 
             context.Projects.Add(project);
-            context.SaveChanges();
+            context.SaveSeedChanges();
 
             ProjectId = project.Id;
             EnvironmentId = project.Environments.Single().Id;
@@ -339,7 +376,7 @@ public class HomeTests : BunitContext
             }
 
             context.FeatureFlags.AddRange(flags);
-            context.SaveChanges();
+            context.SaveSeedChanges();
         }
 
         public void SeedConfigs(params FeatureConfig[] configs)
@@ -352,7 +389,7 @@ public class HomeTests : BunitContext
             }
 
             context.Configs.AddRange(configs);
-            context.SaveChanges();
+            context.SaveSeedChanges();
         }
 
         public void Dispose()

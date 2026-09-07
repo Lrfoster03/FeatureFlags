@@ -11,8 +11,8 @@
 @using Microsoft.EntityFrameworkCore
 @using FeatureFlags.Services
 
-@inject FeatureFlagDbContext Db
-@inject ApplicationDbContext IdentityDb
+@inject IDbContextFactory<FeatureFlagDbContext> DbFactory
+@inject ProjectChanges Changes
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
 @inject IProjectPermissionService PermissionService
@@ -31,6 +31,9 @@
     <div class="alert alert-success">@successMessage</div>
 }
 
+@if (canView)
+{
+<fieldset disabled="@isSaving" class="border-0 p-0 m-0">
 <div class="card p-3 mb-4">
     <h4>Add Project Member</h4>
 
@@ -49,7 +52,7 @@
         </select>
     </div>
 
-    <button class="btn btn-primary" @onclick="AddMember">Add Member</button>
+    <button class="btn btn-primary" disabled="@(!canManageMembers)" @onclick="AddMember">Add Member</button>
 </div>
 
 <div class="card p-3 mb-4">
@@ -77,7 +80,7 @@
                         @if (member.RevokedAt is null)
                         {
                             <select class="form-select form-select-sm" value="@member.Role"
-                                    @onchange="e => UpdateMemberRole(member, e)">
+                                    disabled="@(!canManageMembers)" @onchange="e => UpdateMemberRole(member, e)">
                                 <option value="@ProjectRole.Viewer">Viewer</option>
                                 <option value="@ProjectRole.Editor">Editor</option>
                                 <option value="@ProjectRole.Admin">Admin</option>
@@ -89,7 +92,7 @@
                     <td>
                         @if (member.RevokedAt is null)
                         {
-                            <button class="btn btn-outline-danger btn-sm" @onclick="() => RevokeMember(member)">
+                            <button class="btn btn-outline-danger btn-sm" disabled="@(!canManageMembers)" @onclick="() => RevokeMember(member)">
                                 Remove
                             </button>
                         }
@@ -116,7 +119,7 @@
             <input class="form-control" @bind="newKeyName" placeholder="Local dev, production app, etc." />
         </div>
         <div class="col-md-4">
-            <button class="btn btn-primary w-100" @onclick="GenerateKey">Generate Key</button>
+            <button class="btn btn-primary w-100" disabled="@(!canManageKeys)" @onclick="GenerateKey">Generate Key</button>
         </div>
     </div>
 
@@ -150,7 +153,7 @@
                     <td>
                         @if (key.RevokedAt is null)
                         {
-                            <button class="btn btn-outline-danger btn-sm" @onclick="() => RevokeKey(key)">
+                            <button class="btn btn-outline-danger btn-sm" disabled="@(!canManageKeys)" @onclick="() => RevokeKey(key)">
                                 Revoke
                             </button>
                         }
@@ -165,323 +168,91 @@
     </table>
 </div>
 
-@code {
-    [Parameter]
-    public string ProjectId { get; set; } = string.Empty;
+</fieldset>
+}
 
-    private string projectId = string.Empty;
+@code {
+    [Parameter] public string ProjectId { get; set; } = "";
+    private string? loadedProject;
     private int environmentId;
-    private string memberEmail = string.Empty;
+    private string memberEmail = "";
     private ProjectRole selectedRole = ProjectRole.Viewer;
     private string? errorMessage;
     private string? successMessage;
-    private List<ProjectMember> members = new();
-    private List<ClientKey> keys = new();
-    private string newKeyName = string.Empty;
+    private List<ProjectMember> members = [];
+    private List<ClientKey> keys = [];
+    private string newKeyName = "";
     private string? generatedKey;
+    private bool isSaving;
+    private bool canView;
+    private bool canManageMembers;
+    private bool canManageKeys;
+    private readonly Dictionary<string, Guid> pendingOperations = [];
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
-        projectId = ProjectId;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        var canViewProject = await PermissionService.CanViewProjectAsync(projectId, currentUserId);
-        if (!canViewProject)
-        {
-            errorMessage = "You do not have permission to view this project.";
-            return;
-        }
-
-        var project = await Db.Projects
-            .Where(p => p.Id == projectId)
-            .FirstOrDefaultAsync();
-
-        if (project is null)
-        {
-            errorMessage = "Project was not found.";
-            return;
-        }
-
-        var environment = await Db.ProjectEnvironments
-            .Where(e => e.ProjectId == projectId)
-            .OrderBy(e => e.Id)
-            .FirstOrDefaultAsync();
-
-        if (environment is null)
-        {
-            errorMessage = "Project environment was not found.";
-            return;
-        }
-        environmentId = environment.Id;
-
-        members = await Db.ProjectMembers
-            .Where(m => m.ProjectId == projectId)
-            .OrderBy(m => m.Role)
-            .ToListAsync();
-
-        keys = await Db.ClientKeys
-            .Where(k => k.ProjectEnvironment.ProjectId == projectId)
-            .OrderBy(k => k.CreatedAt)
-            .ToListAsync();
+        if (loadedProject == ProjectId) return;
+        loadedProject = ProjectId;
+        members = []; keys = []; generatedKey = null; pendingOperations.Clear();
+        errorMessage = null; successMessage = null;
+        var userId = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User.FindFirstValue(ClaimTypes.NameIdentifier);
+        canView = await PermissionService.CanViewProjectAsync(ProjectId, userId);
+        if (!canView) { errorMessage = "You do not have permission to view this project."; return; }
+        canManageMembers = await PermissionService.CanManageMembersAsync(ProjectId, userId);
+        canManageKeys = await PermissionService.CanManageKeysAsync(ProjectId, userId);
+        await using var db = await DbFactory.CreateDbContextAsync();
+        environmentId = await db.ProjectEnvironments.Where(e => e.ProjectId == ProjectId).OrderBy(e => e.Id).Select(e => e.Id).FirstOrDefaultAsync();
+        await ReloadAsync();
     }
 
-    @* API Keys *@
-
-    private async Task GenerateKey()
+    private async Task ReloadAsync()
     {
-        errorMessage = null;
-        successMessage = null;
-        generatedKey = null;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        members = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == ProjectId)
+            .OrderBy(m => m.RevokedAt != null).ThenBy(m => m.Role).ToListAsync();
+        keys = await db.ClientKeys.AsNoTracking().Where(k => k.ProjectEnvironment.ProjectId == ProjectId).OrderBy(k => k.CreatedAt).ToListAsync();
+    }
 
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        var canManageKeys = await Db.ProjectMembers.AnyAsync(m =>
-            m.ProjectId == projectId &&
-            m.UserId == currentUserId &&
-            (m.Role == ProjectRole.Owner || m.Role == ProjectRole.Admin));
-
-        if (!canManageKeys)
+    private Task GenerateKey() => MutateAsync($"generate-{newKeyName}",
+        id => Changes.GenerateKeyAsync(ProjectId, environmentId, newKeyName, id), "API key generated.", events =>
         {
-            errorMessage = "You do not have permission to manage API keys.";
-            return;
-        }
-
-        var keyValue = GeneratePublicClientKey();
-        var keyName = string.IsNullOrWhiteSpace(newKeyName)
-            ? "Client key"
-            : newKeyName.Trim();
-
-        Db.ClientKeys.Add(new ClientKey
-        {
-            ProjectEnvironmentId = environmentId,
-            Name = keyName,
-            Key = keyValue,
-            CreatedAt = DateTime.UtcNow
+            generatedKey = keys.Single(k => k.Id.ToString() == events.Single().EntityId).Key;
+            newKeyName = "";
         });
-
-        await Db.SaveChangesAsync();
-
-        generatedKey = keyValue;
-        newKeyName = string.Empty;
-        successMessage = "API key generated.";
-
-        keys = await Db.ClientKeys
-            .Where(k => k.ProjectEnvironment.ProjectId == projectId)
-            .OrderBy(k => k.CreatedAt)
-            .ToListAsync();
-    }
-
-    private static string GeneratePublicClientKey()
+    private Task RevokeKey(ClientKey key) => MutateAsync($"revoke-{key.Id}",
+        id => Changes.RevokeKeyAsync(ProjectId, key.Id, key.Revision, id), "API key revoked.");
+    private Task AddMember() => MutateAsync($"add-member-{memberEmail}-{selectedRole}",
+        id => Changes.AddMemberAsync(ProjectId, memberEmail, selectedRole, id), "Project member added or restored.", _ => memberEmail = "");
+    private Task UpdateMemberRole(ProjectMember member, ChangeEventArgs args)
     {
-        Span<byte> bytes = stackalloc byte[24];
-        RandomNumberGenerator.Fill(bytes);
-
-        var token = Convert.ToBase64String(bytes)
-            .Replace("+", "-", StringComparison.Ordinal)
-            .Replace("/", "_", StringComparison.Ordinal)
-            .Replace("=", string.Empty, StringComparison.Ordinal);
-
-        return $"ff_client_{token}";
+        if (!Enum.TryParse<ProjectRole>(args.Value?.ToString(), out var role) || !Enum.IsDefined(role))
+        { errorMessage = "Invalid role."; return Task.CompletedTask; }
+        return MutateAsync($"role-{member.Id}-{role}", id => Changes.ChangeMemberAsync(ProjectId, member.Id, member.Revision, role, id), "Member role updated.");
     }
+    private Task RevokeMember(ProjectMember member) => MutateAsync($"remove-{member.Id}",
+        id => Changes.ChangeMemberAsync(ProjectId, member.Id, member.Revision, null, id), "Project member removed.");
 
-    private async Task RevokeKey(ClientKey key)
+    private async Task MutateAsync(string action, Func<Guid, Task<IReadOnlyList<AuditEvent>>> mutation, string success,
+        Action<IReadOnlyList<AuditEvent>>? after = null)
     {
-        errorMessage = null;
-        successMessage = null;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        var canManageKeys = await PermissionService.CanManageKeysAsync(projectId, currentUserId);
-
-        if (!canManageKeys)
+        if (isSaving) return;
+        isSaving = true; errorMessage = null; successMessage = null;
+        if (!pendingOperations.TryGetValue(action, out var operation)) pendingOperations[action] = operation = Guid.NewGuid();
+        try
         {
-            errorMessage = "You do not have permission to revoke API keys.";
-            return;
+            var events = await mutation(operation);
+            pendingOperations.Remove(action);
+            await ReloadAsync();
+            after?.Invoke(events); successMessage = success;
         }
-
-        var existing = await Db.ClientKeys.FindAsync(key.Id);
-
-        if (existing is null)
+        catch (DbUpdateConcurrencyException)
         {
-            errorMessage = "API key was not found.";
-            return;
+            errorMessage = "This item changed since you opened it. Review the refreshed information before trying again.";
+            await ReloadAsync();
         }
-
-        existing.RevokedAt = DateTime.UtcNow;
-        await Db.SaveChangesAsync();
-
-        successMessage = "API key revoked.";
-
-        keys = await Db.ClientKeys
-            .Where(k => k.ProjectEnvironment.ProjectId == projectId)
-            .OrderBy(k => k.CreatedAt)
-            .ToListAsync();
-    }
-
-    @* Member Roles *@
-
-    private async Task AddMember()
-    {
-        errorMessage = null;
-        successMessage = null;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        var canManageMembers = await Db.ProjectMembers.AnyAsync(m =>
-            m.ProjectId == projectId &&
-            m.UserId == currentUserId &&
-            (m.Role == ProjectRole.Owner || m.Role == ProjectRole.Admin));
-
-        if (!canManageMembers)
-        {
-            errorMessage = "You do not have permission to manage project members.";
-            return;
-        }
-
-        var normalizedEmail = memberEmail.Trim().ToUpperInvariant();
-
-        var user = await IdentityDb.Users
-            .FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail);
-
-        if (user is null)
-        {
-            errorMessage = "No registered user found with that email.";
-            return;
-        }
-
-        var existingMember = await Db.ProjectMembers.FirstOrDefaultAsync(m =>
-            m.ProjectId == projectId &&
-            m.UserId == user.Id);
-
-        if (existingMember is not null)
-        {
-            if (existingMember.RevokedAt is null)
-            {
-                errorMessage = "That user is already a member of this project.";
-                return;
-            }
-
-            existingMember.RevokedAt = null;
-            existingMember.Role = selectedRole;
-            existingMember.Email = user.Email ?? memberEmail.Trim();
-            existingMember.DisplayName = user.UserName ?? user.Email ?? memberEmail.Trim();
-
-            await Db.SaveChangesAsync();
-            successMessage = "Project member restored.";
-            await ReloadMembers();
-            return;
-        }
-
-        Db.ProjectMembers.Add(new ProjectMember
-        {
-            ProjectId = projectId,
-            UserId = user.Id,
-            Email = user.Email ?? memberEmail.Trim(),
-            DisplayName = user.UserName ?? user.Email ?? memberEmail.Trim(),
-            Role = selectedRole
-        });
-
-        await Db.SaveChangesAsync();
-
-        members = await Db.ProjectMembers
-            .Where(m => m.ProjectId == projectId)
-            .OrderBy(m => m.Role)
-            .ToListAsync();
-
-        memberEmail = string.Empty;
-        successMessage = "Project member added.";
-
-        keys = await Db.ClientKeys
-            .Where(k => k.ProjectEnvironment.ProjectId == projectId)
-            .OrderBy(k => k.CreatedAt)
-            .ToListAsync();
-    }
-
-    private async Task UpdateMemberRole(ProjectMember member, ChangeEventArgs e)
-    {
-        errorMessage = null;
-        successMessage = null;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        var canManageMembers = await PermissionService.CanManageMembersAsync(projectId, currentUserId);
-
-        if (!canManageMembers)
-        {
-            errorMessage = "You do not have permission to update project members.";
-            return;
-        }
-
-        if (!Enum.TryParse<ProjectRole>(e.Value?.ToString(), out var newRole))
-        {
-            errorMessage = "Invalid role.";
-            return;
-        }
-
-        var existing = await Db.ProjectMembers.FindAsync(member.Id);
-
-        if (existing is null)
-        {
-            errorMessage = "Project member was not found.";
-            return;
-        }
-
-        existing.Role = newRole;
-        await Db.SaveChangesAsync();
-
-        successMessage = "Member role updated.";
-        await ReloadMembers();
-    }
-
-    private async Task RevokeMember(ProjectMember member)
-    {
-        errorMessage = null;
-        successMessage = null;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        var canManageMembers = await PermissionService.CanManageMembersAsync(projectId, currentUserId);
-
-        if (!canManageMembers)
-        {
-            errorMessage = "You do not have permission to remove project members.";
-            return;
-        }
-
-        if (member.UserId == currentUserId)
-        {
-            errorMessage = "You cannot remove yourself from the project.";
-            return;
-        }
-
-        var existing = await Db.ProjectMembers.FindAsync(member.Id);
-
-        if (existing is null)
-        {
-            errorMessage = "Project member was not found.";
-            return;
-        }
-
-        existing.RevokedAt = DateTime.UtcNow;
-        await Db.SaveChangesAsync();
-
-        successMessage = "Project member removed.";
-        await ReloadMembers();
-    }
-
-    private async Task ReloadMembers()
-    {
-        members = await Db.ProjectMembers
-            .Where(m => m.ProjectId == projectId)
-            .OrderBy(m => m.RevokedAt != null)
-            .ThenBy(m => m.Role)
-            .ToListAsync();
+        catch (ArgumentException ex) { errorMessage = ex.Message; }
+        catch (UnauthorizedAccessException ex) { errorMessage = ex.Message; }
+        catch (Exception) { errorMessage = "Failed to save changes. Please retry."; }
+        finally { isSaving = false; }
     }
 }

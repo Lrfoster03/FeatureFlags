@@ -57,7 +57,7 @@ public class FeatureFlagDbContextTests
             PercentageRollout = 100,
             ProjectEnvironmentId = environmentId
         });
-        await context.SaveChangesAsync();
+        await context.SaveSeedChangesAsync();
 
         context.FeatureFlags.Add(new FeatureFlag
         {
@@ -67,7 +67,7 @@ public class FeatureFlagDbContextTests
             ProjectEnvironmentId = environmentId
         });
 
-        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveSeedChangesAsync());
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class FeatureFlagDbContextTests
                 }
             });
 
-            await context.SaveChangesAsync();
+            await context.SaveSeedChangesAsync();
         }
 
         await using (var assertContext = CreateContext(connection))
@@ -150,7 +150,7 @@ public class FeatureFlagDbContextTests
         };
 
         context.Projects.Add(project);
-        await context.SaveChangesAsync();
+        await context.SaveSeedChangesAsync();
 
         return project.Environments.Single().Id;
     }
