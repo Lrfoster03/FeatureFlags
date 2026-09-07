@@ -41,7 +41,11 @@ public class SettingsTests : BunitContext
             // A successful refresh with a missing key makes the completion callback fail.
             return new HiddenKeysContext(options);
         }));
-        Services.AddSingleton(new ProjectChanges(factory, new UnusedIdentityFactory(), auth));
+        var invitations = new ProjectInvitations(factory, new UnusedIdentityFactory(), auth, TimeProvider.System);
+        Services.AddSingleton(invitations);
+        Services.AddSingleton(new InvitationDelivery(invitations, new InvitationEmail(
+            Microsoft.Extensions.Options.Options.Create(InvitationEmailTests.Settings(Path.GetTempPath())), new InvitationEmailTests.EmailEnvironment())));
+        Services.AddSingleton(new ProjectChanges(factory, auth));
         Services.AddSingleton<IProjectPermissionService>(new ProjectPermissionService(factory));
         Services.AddSingleton<AuthenticationStateProvider>(auth);
         Services.AddAuthorization();

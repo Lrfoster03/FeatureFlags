@@ -86,7 +86,7 @@ public class ProjectMutationTests
     public async Task Failure_to_insert_audit_rolls_back_resource_change()
     {
         await using var f = await Fixture.CreateAsync();
-        var changes = new ProjectChanges(new TestContextFactory(() => new RejectAuditContext(f.Options)), new UnusedIdentityFactory(), f.Auth);
+        var changes = new ProjectChanges(new TestContextFactory(() => new RejectAuditContext(f.Options)), f.Auth);
         var draft = await f.FlagAsync(); draft.PercentageRollout = 80;
         await Assert.ThrowsAsync<DbUpdateException>(() => changes.SaveItemsAsync(f.Project.Id, [draft], Guid.NewGuid()));
         Assert.Equal(10, (await f.FlagAsync()).PercentageRollout);
@@ -164,12 +164,12 @@ public class ProjectMutationTests
             var factory = new TestContextFactory(() => new FeatureFlagDbContext(options));
             var auth = Fixture.Authentication();
             var project = await new ProjectProvisioningService(factory, auth).CreateProjectForUserAsync(new ApplicationUser { Id = "owner", Email = "owner@example.com" }, "Postgres");
-            var changes = new ProjectChanges(factory, new UnusedIdentityFactory(), auth);
+            var changes = new ProjectChanges(factory, auth);
             await changes.AddItemAsync(project.Id, project.Environments.Single().Id, false, Guid.NewGuid());
             var draft = await db.FeatureFlags.AsNoTracking().SingleAsync(); draft.PercentageRollout = 55;
             await changes.SaveItemsAsync(project.Id, [draft], Guid.NewGuid());
             await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => changes.SaveItemsAsync(project.Id, [draft], Guid.NewGuid()));
-            var failing = new ProjectChanges(new TestContextFactory(() => new RejectAuditContext(options)), new UnusedIdentityFactory(), auth);
+            var failing = new ProjectChanges(new TestContextFactory(() => new RejectAuditContext(options)), auth);
             var latest = await db.FeatureFlags.AsNoTracking().SingleAsync(); latest.PercentageRollout = 90;
             await Assert.ThrowsAsync<DbUpdateException>(() => failing.SaveItemsAsync(project.Id, [latest], Guid.NewGuid()));
             Assert.Equal(55, (await db.FeatureFlags.AsNoTracking().SingleAsync()).PercentageRollout);
@@ -180,14 +180,20 @@ public class ProjectMutationTests
             await using var identity = new ApplicationDbContext(identityOptions); await identity.Database.MigrateAsync();
             identity.Users.Add(new ApplicationUser { Id = "member", Email = "member@example.com", NormalizedEmail = "MEMBER@EXAMPLE.COM", UserName = "Member" });
             await identity.SaveChangesAsync();
-            var membership = new ProjectChanges(factory, new IdentityFactory(identityOptions), auth);
-            Assert.Equal("member.added", Assert.Single(await membership.AddMemberAsync(project.Id, "member@example.com", ProjectRole.Editor, Guid.NewGuid())).Action);
+            var membership = new ProjectChanges(factory, auth);
+            var invitations = new ProjectInvitations(factory, new IdentityFactory(identityOptions), auth, TimeProvider.System);
+            var recipientAuth = new BunitAuthenticationStateProvider("member@example.com", [], [new Claim(ClaimTypes.NameIdentifier, "member")], "Test");
+            var recipient = new ProjectInvitations(factory, new IdentityFactory(identityOptions), recipientAuth, TimeProvider.System);
+            var invitation = await invitations.CreateAsync(project.Id, "member@example.com", ProjectRole.Editor, Guid.NewGuid());
+            await recipient.AcceptAsync(invitation.Token!, Guid.NewGuid());
             var member = await db.ProjectMembers.AsNoTracking().SingleAsync(m => m.UserId == "member");
             var roleEvent = Assert.Single(await membership.ChangeMemberAsync(project.Id, member.Id, member.Revision, ProjectRole.Viewer, Guid.NewGuid()));
             Assert.Contains("Editor", roleEvent.Before); Assert.Contains("Viewer", roleEvent.After);
             member = await db.ProjectMembers.AsNoTracking().SingleAsync(m => m.UserId == "member");
             Assert.Equal("member.removed", Assert.Single(await membership.ChangeMemberAsync(project.Id, member.Id, member.Revision, null, Guid.NewGuid())).Action);
-            Assert.Equal("member.restored", Assert.Single(await membership.AddMemberAsync(project.Id, "member@example.com", ProjectRole.Admin, Guid.NewGuid())).Action);
+            var restored = await invitations.CreateAsync(project.Id, "member@example.com", ProjectRole.Admin, Guid.NewGuid());
+            await recipient.AcceptAsync(restored.Token!, Guid.NewGuid());
+            Assert.Equal(1, await db.AuditEvents.CountAsync(e => e.Action == "member.restored"));
         }
         finally { await using var drop = new NpgsqlCommand($"DROP SCHEMA {schema} CASCADE", connection); await drop.ExecuteNonQueryAsync(); }
     }
@@ -217,7 +223,7 @@ public class ProjectMutationTests
                 .CreateProjectForUserAsync(new ApplicationUser { Id = "owner" }, "Concurrent keys");
             var operation = Guid.NewGuid();
             var firstChanges = new ProjectChanges(new TestContextFactory(() => new PausingKeyContext(options, inserted, release, failFirst)),
-                new UnusedIdentityFactory(), auth);
+                auth);
             var first = firstChanges.GenerateKeyAsync(project.Id, project.Environments.Single().Id, "Browser", operation);
             requests.Add(first);
             await inserted.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -226,7 +232,7 @@ public class ProjectMutationTests
             { SearchPath = schema, ApplicationName = schema + "_duplicate" };
             var retryOptions = new DbContextOptionsBuilder<FeatureFlagDbContext>().UseNpgsql(retryConnection.ConnectionString).Options;
             var retryChanges = new ProjectChanges(new TestContextFactory(() => new FeatureFlagDbContext(retryOptions)),
-                new UnusedIdentityFactory(), auth);
+                auth);
             var duplicate = retryChanges.GenerateKeyAsync(project.Id, project.Environments.Single().Id, "Browser", operation);
             requests.Add(duplicate);
 
@@ -310,7 +316,7 @@ public class ProjectMutationTests
             var f = new Fixture(); await f.connection.OpenAsync();
             f.Options = new DbContextOptionsBuilder<FeatureFlagDbContext>().UseSqlite(f.connection).Options;
             f.Factory = new TestContextFactory(() => new FeatureFlagDbContext(f.Options));
-            f.Changes = new ProjectChanges(f.Factory, new UnusedIdentityFactory(), f.Auth);
+            f.Changes = new ProjectChanges(f.Factory, f.Auth);
             await using var db = f.Factory.CreateDbContext(); await db.Database.EnsureCreatedAsync();
             db.Projects.Add(f.Project); await db.SaveSeedChangesAsync();
             db.FeatureFlags.Add(new FeatureFlag { Name = "Alpha", PercentageRollout = 10, ProjectEnvironmentId = f.EnvironmentId });
