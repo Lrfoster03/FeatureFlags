@@ -1,5 +1,5 @@
 @page "/projects/{ProjectId}/settings"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @attribute [Authorize]
 
 @using System.Security.Claims
@@ -12,6 +12,8 @@
 @using FeatureFlags.Services
 
 @inject IDbContextFactory<FeatureFlagDbContext> DbFactory
+@inject ProjectInvitations Invitations
+@inject InvitationDelivery Delivery
 @inject ProjectChanges Changes
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
@@ -35,16 +37,17 @@
 {
 <fieldset disabled="@isSaving" class="border-0 p-0 m-0">
 <div class="card p-3 mb-4">
-    <h4>Add Project Member</h4>
+    <h4>Invite Project Member</h4>
+    <p>Send an email invitation. Access begins when the recipient joins.</p>
 
     <div class="mb-3">
-        <label class="form-label">User Email</label>
-        <input class="form-control" @bind="memberEmail" />
+        <label class="form-label" for="invite-email">User Email</label>
+        <input id="invite-email" type="email" class="form-control" @bind="memberEmail" />
     </div>
 
     <div class="mb-3">
-        <label class="form-label">Role</label>
-        <select class="form-select" @bind="selectedRole">
+        <label class="form-label" for="invite-role">Role</label>
+        <select id="invite-role" class="form-select" @bind="selectedRole">
             <option value="@ProjectRole.Viewer">Viewer</option>
             <option value="@ProjectRole.Editor">Editor</option>
             <option value="@ProjectRole.Admin">Admin</option>
@@ -52,8 +55,41 @@
         </select>
     </div>
 
-    <button class="btn btn-primary" disabled="@(!canManageMembers)" @onclick="AddMember">Add Member</button>
+    <button class="btn btn-primary" disabled="@(!canManageMembers)" @onclick="SendInvitation">Send invitation</button>
 </div>
+
+@if (canManageMembers)
+{
+<div class="card p-3 mb-4">
+    <h4>Pending invitations</h4>
+    @if (invitations.Count == 0)
+    {
+        <p class="text-muted mb-0">No pending invitations.</p>
+    }
+    else
+    {
+        <div class="table-responsive">
+        <table class="table mb-0" aria-label="Pending invitations">
+            <thead><tr><th>Email</th><th>Role</th><th>Status</th><th>Expires (UTC)</th><th>Actions</th></tr></thead>
+            <tbody>
+                @foreach (var invitation in invitations)
+                {
+                    <tr @key="invitation.Id">
+                        <td>@invitation.Email</td><td>@invitation.Role</td>
+                        <td>@(invitation.ExpiresAt <= DateTime.UtcNow ? "Expired" : "Awaiting acceptance")</td>
+                        <td><time datetime="@invitation.ExpiresAt.ToString("O")">@invitation.ExpiresAt.ToString("yyyy-MM-dd HH:mm")</time></td>
+                        <td>
+                            <button class="btn btn-outline-primary btn-sm" @onclick="() => ResendInvitation(invitation)">Resend</button>
+                            <button class="btn btn-outline-danger btn-sm" @onclick="() => RevokeInvitation(invitation)">Revoke</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        </div>
+    }
+</div>
+}
 
 <div class="card p-3 mb-4">
     <h4>Members</h4>
@@ -180,6 +216,7 @@
     private string? errorMessage;
     private string? successMessage;
     private List<ProjectMember> members = [];
+    private List<ProjectInvitation> invitations = [];
     private List<ClientKey> keys = [];
     private string newKeyName = "";
     private string? generatedKey;
@@ -193,7 +230,7 @@
     {
         if (loadedProject == ProjectId) return;
         loadedProject = ProjectId;
-        members = []; keys = []; generatedKey = null; pendingOperations.Clear();
+        members = []; invitations = []; keys = []; generatedKey = null; pendingOperations.Clear();
         errorMessage = null; successMessage = null;
         var userId = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User.FindFirstValue(ClaimTypes.NameIdentifier);
         canView = await PermissionService.CanViewProjectAsync(ProjectId, userId);
@@ -208,6 +245,8 @@
     private async Task ReloadAsync()
     {
         await using var db = await DbFactory.CreateDbContextAsync();
+        invitations = canManageMembers ? await db.ProjectInvitations.AsNoTracking().Where(i => i.ProjectId == ProjectId &&
+            i.AcceptedAt == null && i.RevokedAt == null).OrderByDescending(i => i.CreatedAt).ToListAsync() : [];
         members = await db.ProjectMembers.AsNoTracking().Where(m => m.ProjectId == ProjectId)
             .OrderBy(m => m.RevokedAt != null).ThenBy(m => m.Role).ToListAsync();
         keys = await db.ClientKeys.AsNoTracking().Where(k => k.ProjectEnvironment.ProjectId == ProjectId).OrderBy(k => k.CreatedAt).ToListAsync();
@@ -221,8 +260,13 @@
         });
     private Task RevokeKey(ClientKey key) => MutateAsync($"revoke-{key.Id}",
         id => Changes.RevokeKeyAsync(ProjectId, key.Id, key.Revision, id), "API key revoked.");
-    private Task AddMember() => MutateAsync($"add-member-{memberEmail}-{selectedRole}",
-        id => Changes.AddMemberAsync(ProjectId, memberEmail, selectedRole, id), "Project member added or restored.", _ => memberEmail = "");
+    private Task SendInvitation() => MutateAsync($"invite-{memberEmail}-{selectedRole}",
+        async id => { await Delivery.SendAsync(ProjectId, memberEmail, selectedRole, id); return []; },
+        Delivery.SuccessMessage, _ => memberEmail = "");
+    private Task ResendInvitation(ProjectInvitation invitation) => MutateAsync($"resend-{invitation.Id}-{invitation.Revision}",
+        async id => { await Delivery.ResendAsync(ProjectId, invitation.Id, invitation.Revision, id); return []; }, Delivery.SuccessMessage);
+    private Task RevokeInvitation(ProjectInvitation invitation) => MutateAsync($"revoke-invitation-{invitation.Id}",
+        id => Invitations.RevokeAsync(ProjectId, invitation.Id, invitation.Revision, id), "Invitation revoked.");
     private Task UpdateMemberRole(ProjectMember member, ChangeEventArgs args)
     {
         if (!Enum.TryParse<ProjectRole>(args.Value?.ToString(), out var role) || !Enum.IsDefined(role))
@@ -251,7 +295,8 @@
             errorMessage = "This item changed since you opened it. Review the refreshed information before trying again.";
             await ReloadAsync();
         }
-        catch (ArgumentException ex) { errorMessage = ex.Message; }
+        catch (InvitationDeliveryException ex) { errorMessage = ex.Message; await ReloadAsync(); }
+        catch (ArgumentException ex) { errorMessage = ex.Message; await ReloadAsync(); }
         catch (UnauthorizedAccessException ex) { errorMessage = ex.Message; }
         catch (Exception) { errorMessage = "Failed to save changes. Please retry."; }
         finally { isSaving = false; }

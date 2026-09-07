@@ -8,7 +8,6 @@ namespace FeatureFlags.Services;
 
 public sealed class ProjectChanges(
     IDbContextFactory<FeatureFlagDbContext> dbFactory,
-    IDbContextFactory<ApplicationDbContext> identityFactory,
     AuthenticationStateProvider authentication) : ProjectMutation(dbFactory, authentication)
 {
     public Task<IReadOnlyList<AuditEvent>> AddItemAsync(string projectId, int environmentId, bool config, Guid operationId)
@@ -88,27 +87,6 @@ public sealed class ProjectChanges(
                 context.Db.Configs.Remove(saved); context.Record(saved, "config.deleted");
             }
             else throw new ArgumentException("Unsupported configuration type.");
-        });
-
-    public Task<IReadOnlyList<AuditEvent>> AddMemberAsync(string projectId, string email, ProjectRole role, Guid operationId)
-        => ExecuteAsync(projectId, operationId, ProjectRole.Admin, async context =>
-        {
-            ValidateRole(role);
-            await using var identity = await identityFactory.CreateDbContextAsync();
-            var normalized = email.Trim().ToUpperInvariant();
-            var user = await identity.Users.AsNoTracking().SingleOrDefaultAsync(u => u.NormalizedEmail == normalized)
-                ?? throw new ArgumentException("No registered user found with that email.");
-            var member = await context.Db.ProjectMembers.SingleOrDefaultAsync(m => m.ProjectId == projectId && m.UserId == user.Id);
-            if (member is not null && member.RevokedAt == null) throw new ArgumentException("That user is already a member of this project.");
-            var restoring = member is not null;
-            if (member is null)
-            {
-                member = new ProjectMember { ProjectId = projectId, UserId = user.Id };
-                context.Db.ProjectMembers.Add(member);
-            }
-            member.Email = user.Email ?? email.Trim(); member.DisplayName = user.UserName ?? member.Email;
-            member.Role = role; member.RevokedAt = null;
-            context.Record(member, restoring ? "member.restored" : "member.added");
         });
 
     public Task<IReadOnlyList<AuditEvent>> ChangeMemberAsync(string projectId, int memberId, int revision, ProjectRole? role, Guid operationId)

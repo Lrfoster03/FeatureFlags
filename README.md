@@ -227,6 +227,8 @@ For real SMTP delivery, configure these environment variables or user secrets:
 | `InvitationEmail__Username` | SMTP username, if authentication is required |
 | `InvitationEmail__Password` | SMTP password, supplied through secrets |
 
+Docker Compose forwards the same settings from its environment or ignored `.env` file.
+
 Clear `InvitationEmail__PickupDirectory` when testing SMTP in Development.
 Production rejects pickup mode and requires TLS. Configure the sender/domain
 with your email provider. SMTP acceptance does not guarantee inbox delivery;
@@ -237,3 +239,8 @@ application does not store raw invitation tokens, so resend always issues a
 new link. A renewed-link audit event records that change even if email delivery
 subsequently fails. Mail credentials and invitation links must not be committed
 or written to application logs.
+
+Run the invitation browser journeys against a Development app and its preview
+folder with `BASE_URL=http://127.0.0.1:8080 INVITATION_MAIL_DIR=/absolute/path/to/invitation-mail npx playwright test tests/visual/invitations.spec.js`.
+The dedicated Invitation journeys workflow runs this in CI with a disposable
+database and local emails.
