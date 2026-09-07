@@ -26,11 +26,12 @@ public sealed class AuditHistory(IDbContextFactory<FeatureFlagDbContext> factory
             throw new UnauthorizedAccessException("You do not have permission to view this project's history.");
     }
 
-    public async Task<HistoryProject> GetProjectAsync(string projectId, CancellationToken token = default)
+    public async Task<HistoryProject> GetProjectAsync(string projectId, bool includeFilters = false, CancellationToken token = default)
     {
         await using var db = await factory.CreateDbContextAsync(token);
         await Authorize(db, projectId, token);
         var name = await db.Projects.Where(p => p.Id == projectId).Select(p => p.Name).SingleAsync(token);
+        if (!includeFilters) return new(name, [], []);
         var events = db.AuditEvents.AsNoTracking().Where(e => e.ProjectId == projectId);
         var actors = await events.Select(e => new HistoryOption(e.ActorUserId, e.ActorDisplayName)).Distinct().ToListAsync(token);
         var environments = await events.Where(e => e.EnvironmentId != null)

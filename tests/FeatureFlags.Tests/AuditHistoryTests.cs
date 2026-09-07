@@ -1,15 +1,55 @@
 using System.Security.Claims;
+using Bunit;
 using Bunit.TestDoubles;
 using FeatureFlags.Components.Models;
+using FeatureFlags.Components.Shared;
 using FeatureFlags.Data;
 using FeatureFlags.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FeatureFlags.Tests;
 
 public class AuditHistoryTests
 {
+    [Fact]
+    public async Task Closed_history_does_not_query_audit_events_on_render_or_project_switch()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var queries = new List<string>();
+        var options = new DbContextOptionsBuilder<FeatureFlagDbContext>().UseSqlite(connection)
+            .LogTo(queries.Add, [RelationalEventId.CommandExecuted]).Options;
+        var factory = new TestContextFactory(() => new(options));
+        await using var db = factory.CreateDbContext();
+        await db.Database.EnsureCreatedAsync();
+        var first = new Project { Name = "First", Members = { new() { UserId = "viewer", Role = ProjectRole.Viewer } } };
+        var second = new Project { Name = "Second", Members = { new() { UserId = "viewer", Role = ProjectRole.Viewer } } };
+        var forbidden = new Project { Name = "Forbidden" };
+        db.Projects.AddRange(first, second, forbidden);
+        db.AuditEvents.AddRange(Entry(first.Id, DateTime.UtcNow, "flag", "1", "owner", 1),
+            Entry(second.Id, DateTime.UtcNow, "config", "1", "editor", 2));
+        await db.SaveSeedChangesAsync();
+        var auth = new BunitAuthenticationStateProvider("Viewer", [], [new Claim(ClaimTypes.NameIdentifier, "viewer")], "Test");
+        using var ui = new BunitContext();
+        ui.Services.AddSingleton(new AuditHistory(factory, auth));
+        ui.JSInterop.SetupModule("./Components/Shared/ProjectHistory.razor.js").Mode = JSRuntimeMode.Loose;
+        queries.Clear();
+
+        var cut = ui.Render<ProjectHistory>(p => p.Add(c => c.ProjectId, first.Id));
+        cut.WaitForAssertion(() => Assert.Contains("First", cut.Find(".history-heading").TextContent));
+        cut.Render(p => p.Add(c => c.ProjectId, second.Id));
+        cut.WaitForAssertion(() => Assert.Contains("Second", cut.Find(".history-heading").TextContent));
+        Assert.Single(cut.FindAll("select[aria-label='Who'] option"));
+        Assert.Single(cut.FindAll("select[aria-label='Environment'] option"));
+        cut.Render(p => p.Add(c => c.ProjectId, forbidden.Id));
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("button")));
+        Assert.Contains(queries, query => query.Contains("\"Projects\""));
+        Assert.DoesNotContain(queries, query => query.Contains("\"AuditEvents\""));
+    }
+
     [Fact]
     public async Task History_is_scoped_authorized_and_paginated_with_stable_ties()
     {
@@ -43,7 +83,7 @@ public class AuditHistoryTests
             new(Type: "flag", EntityId: "1", Actor: "owner", Environment: 1, FromUtc: time, UntilUtc: time.AddDays(1)))).Events).Id);
         Assert.Empty((await service.ListAsync(project.Id, new(UntilUtc: time.AddDays(-1)))).Events);
         Assert.Empty((await service.ListAsync(project.Id, new(Actor: "other"))).Events);
-        var metadata = await service.GetProjectAsync(project.Id);
+        var metadata = await service.GetProjectAsync(project.Id, includeFilters: true);
         Assert.Equal("First", metadata.Name);
         Assert.Equal(2, metadata.Actors.Count);
         Assert.DoesNotContain(metadata.Environments, e => e.Id == "3");
@@ -56,6 +96,7 @@ public class AuditHistoryTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ListAsync(project.Id, new()));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.DetailAsync(project.Id, first.Id));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetProjectAsync(project.Id));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetProjectAsync(project.Id, includeFilters: true));
     }
 
     private static AuditEvent Entry(string project, DateTime time, string type, string id, string actor, int env) => new()

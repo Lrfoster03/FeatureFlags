@@ -55,6 +55,8 @@ test('project history shows saved diffs, preserves drafts, and stays within the 
   const modal = page.locator('dialog[open]');
   await expect(modal).toBeVisible();
   await expect(modal.locator('.history-row')).toHaveCount(3);
+  await expect(modal.getByLabel('Who', { exact: true })).toContainText(email);
+  await expect(modal.getByLabel('Environment', { exact: true })).toContainText('Development');
   await expect(modal.locator('.history-row').first()).toContainText('updated flag');
   await modal.locator('.history-row').first().click();
   await expect(modal.locator('.history-field')).toContainText('Rollout');

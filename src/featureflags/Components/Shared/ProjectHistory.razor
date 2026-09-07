@@ -143,7 +143,7 @@
         var token = requests.Token;
         try
         {
-            var current = await History.GetProjectAsync(ProjectId, token);
+            var current = await History.GetProjectAsync(ProjectId, token: token);
             if (!token.IsCancellationRequested) { project = current; canView = true; }
         }
         catch (OperationCanceledException) { }
@@ -198,7 +198,7 @@
             module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Shared/ProjectHistory.razor.js");
             var dates = await module.InvokeAsync<DateBounds>("dateBounds", fromDate, throughDate);
             applied = new(EntityType ?? type, EntityId, actor, int.TryParse(environment, out var env) ? env : null, dates.FromUtc, dates.UntilUtc);
-            var current = await History.GetProjectAsync(ProjectId, token);
+            var current = await History.GetProjectAsync(ProjectId, includeFilters: true, token: token);
             var page = await History.ListAsync(ProjectId, applied, token: token);
             if (token.IsCancellationRequested || !open) return;
             project = current; rows = page.Events.ToList(); next = page.Next;
