@@ -16,6 +16,43 @@ namespace FeatureFlags.Tests;
 
 public class HomeTests : BunitContext
 {
+    [Theory]
+    [InlineData("Add Flag")]
+    [InlineData("Add Config")]
+    public async Task Adding_an_item_retries_committed_operation_after_refresh_failure(string button)
+    {
+        using var database = new TestDatabase();
+        var failNextRefresh = false;
+        Services.AddSingleton<IFeatureFlagConfirmationService>(new StubConfirmationService(true));
+        Services.AddSingleton<IProjectPermissionService>(new StubProjectPermissionService());
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(() =>
+        {
+            if (failNextRefresh)
+            {
+                failNextRefresh = false;
+                throw new InvalidOperationException("Simulated refresh failure");
+            }
+            return database.CreateContext();
+        }));
+        var auth = AddAuthenticatedUser();
+        Services.AddSingleton(new ProjectChanges(new TestContextFactory(database.CreateContext), new UnusedIdentityFactory(), auth));
+        var cut = RenderHome(database);
+
+        failNextRefresh = true;
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == button).Click();
+        cut.WaitForAssertion(() => Assert.Contains("Failed to save changes.", cut.Markup));
+        using var db = database.CreateContext();
+        var audit = await db.AuditEvents.SingleAsync();
+
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == button).Click();
+        cut.WaitForAssertion(() => Assert.DoesNotContain("Failed to save changes.", cut.Markup));
+        Assert.Equal(1, await db.FeatureFlags.CountAsync() + await db.Configs.CountAsync());
+        Assert.Equal(audit.Id, (await db.AuditEvents.SingleAsync()).Id);
+
+        cut.FindAll("button").Single(b => b.TextContent.Trim() == button).Click();
+        Assert.Equal(2, await db.FeatureFlags.CountAsync() + await db.Configs.CountAsync());
+    }
+
     [Fact]
     public async Task Adding_an_item_keeps_other_drafts_unsaved_and_discard_reloads_them()
     {
@@ -287,19 +324,20 @@ public class HomeTests : BunitContext
     private IRenderedComponent<Home> RenderHome(TestDatabase database)
         => Render<Home>(parameters => parameters.Add(p => p.ProjectId, database.ProjectId));
 
-    private void AddAuthenticatedUser()
+    private AuthenticationStateProvider AddAuthenticatedUser()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
         Services.AddSingleton<IDbContextFactory<ApplicationDbContext>>(new UnusedIdentityFactory());
         Services.AddScoped<ProjectChanges>();
         Services.AddAuthorization();
         Services.AddCascadingAuthenticationState();
-        Services.AddSingleton<AuthenticationStateProvider>(
-            new BunitAuthenticationStateProvider(
+        var authentication = new BunitAuthenticationStateProvider(
                 "owner@example.com",
                 [],
                 [new Claim(ClaimTypes.NameIdentifier, TestDatabase.UserId)],
-                "Test"));
+                "Test");
+        Services.AddSingleton<AuthenticationStateProvider>(authentication);
+        return authentication;
     }
 
     private sealed class StubProjectPermissionService : IProjectPermissionService

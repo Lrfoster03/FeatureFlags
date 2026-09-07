@@ -166,6 +166,93 @@ public class ProjectMutationTests
         finally { await using var drop = new NpgsqlCommand($"DROP SCHEMA {schema} CASCADE", connection); await drop.ExecuteNonQueryAsync(); }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PostgreSql_serializes_duplicate_operations_until_commit_or_rollback(bool failFirst)
+    {
+        var connectionString = Environment.GetEnvironmentVariable("AUDIT_TEST_POSTGRES");
+        if (string.IsNullOrEmpty(connectionString)) return; // CI supplies a disposable PostgreSQL database.
+        var schema = "operation_test_" + Guid.NewGuid().ToString("N");
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using (var create = new NpgsqlCommand($"CREATE SCHEMA {schema}", connection)) await create.ExecuteNonQueryAsync();
+        var inserted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var requests = new List<Task>();
+        try
+        {
+            var options = new DbContextOptionsBuilder<FeatureFlagDbContext>().UseNpgsql(connectionString + ";Search Path=" + schema).Options;
+            await using var db = new FeatureFlagDbContext(options);
+            await db.Database.MigrateAsync();
+            var factory = new TestContextFactory(() => new FeatureFlagDbContext(options));
+            var auth = Fixture.Authentication();
+            var project = await new ProjectProvisioningService(factory, auth)
+                .CreateProjectForUserAsync(new ApplicationUser { Id = "owner" }, "Concurrent keys");
+            var operation = Guid.NewGuid();
+            var firstChanges = new ProjectChanges(new TestContextFactory(() => new PausingKeyContext(options, inserted, release, failFirst)),
+                new UnusedIdentityFactory(), auth);
+            var first = firstChanges.GenerateKeyAsync(project.Id, project.Environments.Single().Id, "Browser", operation);
+            requests.Add(first);
+            await inserted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            var retryConnection = new NpgsqlConnectionStringBuilder(connectionString)
+            { SearchPath = schema, ApplicationName = schema + "_duplicate" };
+            var retryOptions = new DbContextOptionsBuilder<FeatureFlagDbContext>().UseNpgsql(retryConnection.ConnectionString).Options;
+            var retryChanges = new ProjectChanges(new TestContextFactory(() => new FeatureFlagDbContext(retryOptions)),
+                new UnusedIdentityFactory(), auth);
+            var duplicate = retryChanges.GenerateKeyAsync(project.Id, project.Environments.Single().Id, "Browser", operation);
+            requests.Add(duplicate);
+
+            // Observe a real database wait, rather than guessing overlap from an arbitrary delay.
+            var waited = false;
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (!duplicate.IsCompleted)
+            {
+                await using var probe = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE application_name = @name AND wait_event = 'advisory')", connection);
+                probe.Parameters.AddWithValue("name", retryConnection.ApplicationName);
+                waited = (bool)(await probe.ExecuteScalarAsync(timeout.Token))!;
+                if (waited) break;
+                await Task.Delay(10, timeout.Token);
+            }
+            release.TrySetResult();
+            if (failFirst) await Assert.ThrowsAsync<DbUpdateException>(() => first);
+            var result = Assert.Single(await duplicate.WaitAsync(TimeSpan.FromSeconds(10)));
+            if (!failFirst) Assert.Equal(result.Id, Assert.Single(await first).Id);
+            Assert.True(waited, "The duplicate request must wait for the first operation's transaction.");
+            Assert.Equal(result.EntityId, (await db.ClientKeys.SingleAsync()).Id.ToString());
+            Assert.Equal(result.Id, (await db.AuditEvents.SingleAsync(e => e.OperationId == operation)).Id);
+            Assert.Equal(result.Id, Assert.Single(await retryChanges.GenerateKeyAsync(project.Id,
+                project.Environments.Single().Id, "Browser", operation)).Id);
+            Assert.Equal(1, await db.ClientKeys.CountAsync());
+        }
+        finally
+        {
+            release.TrySetResult();
+            try { await Task.WhenAll(requests).WaitAsync(TimeSpan.FromSeconds(10)); }
+            catch { /* Release held transactions even when an assertion or the simulated write fails. */ }
+            await using var drop = new NpgsqlCommand($"DROP SCHEMA {schema} CASCADE", connection);
+            await drop.ExecuteNonQueryAsync();
+        }
+    }
+
+    private sealed class PausingKeyContext(DbContextOptions<FeatureFlagDbContext> options,
+        TaskCompletionSource inserted, TaskCompletionSource release, bool fail) : FeatureFlagDbContext(options)
+    {
+        public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+        {
+            var addingKey = ChangeTracker.Entries<ClientKey>().Any(e => e.State == EntityState.Added);
+            var count = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+            if (addingKey)
+            {
+                inserted.TrySetResult();
+                await release.Task.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
+                if (fail) throw new DbUpdateException("Simulated failure after inserting the key.");
+            }
+            return count;
+        }
+    }
+
     private sealed class TestMutation(IDbContextFactory<FeatureFlagDbContext> factory, AuthenticationStateProvider auth) : ProjectMutation(factory, auth)
     {
         public Task<IReadOnlyList<AuditEvent>> Run(string project, Func<MutationContext, Task> action)

@@ -1,4 +1,7 @@
+using System.Buffers.Binary;
+using System.Data;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FeatureFlags.Components.Models;
@@ -30,6 +33,15 @@ public abstract class ProjectMutation(
         if (!creatingProject && (member is null || member.Role < minimumRole))
             throw new UnauthorizedAccessException("You do not have permission to change this project.");
 
+        await using var transaction = await db.Database.BeginTransactionAsync(
+            db.Database.IsNpgsql() ? IsolationLevel.ReadCommitted : IsolationLevel.Serializable, cancellationToken);
+        if (db.Database.IsNpgsql())
+        {
+            // Lock across app instances, then read a fresh result after the previous transaction ends.
+            var lockId = BinaryPrimitives.ReadInt64BigEndian(SHA256.HashData(operationId.ToByteArray()));
+            await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockId})", cancellationToken);
+        }
+
         var completed = await db.AuditEvents.AsNoTracking().Where(e => e.OperationId == operationId).ToListAsync(cancellationToken);
         if (completed.Count > 0)
         {
@@ -38,7 +50,6 @@ public abstract class ProjectMutation(
             return completed;
         }
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         var context = new MutationContext(db, projectId, actorId);
         await change(context);
         var pending = await context.PrepareAsync(cancellationToken);

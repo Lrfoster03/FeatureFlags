@@ -190,9 +190,9 @@
         try
         {
             await mutation(operation);
-            pendingOperations.Remove(action);
             saved?.Invoke();
             await ReloadConfigsAsync();
+            pendingOperations.Remove(action);
         }
         catch (DbUpdateConcurrencyException)
         {

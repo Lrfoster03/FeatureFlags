@@ -241,9 +241,10 @@
         try
         {
             var events = await mutation(operation);
-            pendingOperations.Remove(action);
             await ReloadAsync();
-            after?.Invoke(events); successMessage = success;
+            after?.Invoke(events);
+            pendingOperations.Remove(action);
+            successMessage = success;
         }
         catch (DbUpdateConcurrencyException)
         {
