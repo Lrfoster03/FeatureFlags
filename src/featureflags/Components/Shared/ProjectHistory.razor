@@ -64,7 +64,7 @@
                         <button type="button" class="history-row" aria-expanded="@(expanded ? "true" : "false")" aria-controls="@panelId"
                                 disabled="@(detailLoading == row.Id)" @onclick="() => ToggleAsync(row)">
                             <span class="history-chevron" aria-hidden="true">@(expanded ? "⌄" : "›")</span>
-                            <span class="history-description"><strong>@row.Actor</strong> @AuditHistory.Description(row.Action) <strong>@row.EntityName</strong>
+                            <span class="history-description"><strong class="history-actor">@row.Actor</strong> <span class="history-action">@AuditHistory.Description(row.Action) <strong>@row.EntityName</strong></span>
                                 @if (row.Environment is not null) { <span class="d-block small text-muted">@row.Environment</span> }
                             </span>
                             <time datetime="@Iso(row.Time)" data-audit-time="true"><span data-audit-date>…</span><span data-audit-clock class="d-block text-muted">…</span></time>

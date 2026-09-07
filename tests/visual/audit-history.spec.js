@@ -1,8 +1,8 @@
 import { expect, takeSnapshot, test } from '@chromatic-com/playwright';
 import { randomUUID } from 'node:crypto';
 
-// Capture the two history states explicitly, without an extra end-of-test snapshot.
-test.use({ timezoneId: 'America/Los_Angeles', disableAutoSnapshot: true });
+// Capture history states explicitly at their viewport size.
+test.use({ timezoneId: 'America/Los_Angeles', disableAutoSnapshot: true, cropToViewport: true });
 
 async function snapshotHistory(page, name, testInfo) {
   // Keep generated account details and server timestamps stable in visual baselines.
@@ -17,6 +17,7 @@ async function snapshotHistory(page, name, testInfo) {
     formatTimes(document.querySelector('dialog[open]'));
   });
   await takeSnapshot(page, name, testInfo);
+  await page.screenshot({ path: testInfo.outputPath(`${name}.png`) });
 }
 
 test('project history shows saved diffs, preserves drafts, and stays within the selected project', async ({ page }, testInfo) => {
@@ -106,11 +107,37 @@ test('project history shows saved diffs, preserves drafts, and stays within the 
   await page.setViewportSize({ width: 390, height: 844 });
   await modal.locator('.history-row').first().click();
   await expect(modal.locator('.history-row').first()).toHaveAttribute('aria-expanded', 'true');
-  await snapshotHistory(page, 'History mobile', testInfo);
   const box = await modal.boundingBox();
+  expect(box.x).toBe(0);
+  expect(box.y).toBe(0);
   expect(box.width).toBe(390);
   expect(box.height).toBe(844);
   expect(await modal.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const actorBox = await modal.locator('.history-actor').first().boundingBox();
+  const actionBox = await modal.locator('.history-action').first().boundingBox();
+  expect(actionBox.y).toBeGreaterThanOrEqual(actorBox.y + actorBox.height);
+  const field = modal.locator('.history-field').first();
+  const labelBox = await field.locator('code').boundingBox();
+  const valueBox = await field.locator(':scope > span').boundingBox();
+  expect(valueBox.y).toBeGreaterThanOrEqual(labelBox.y + labelBox.height);
+  const close = modal.getByRole('button', { name: 'Close project history' });
+  expect((await close.boundingBox()).height).toBeGreaterThanOrEqual(44);
+  await snapshotHistory(page, 'History mobile', testInfo);
+  await modal.locator('.history-scroll').evaluate(element => { element.scrollTop = element.scrollHeight; });
+  expect(await modal.locator('.history-scroll').evaluate(element => element.scrollTop)).toBeGreaterThan(0);
+  await expect(close).toBeInViewport();
+  await close.click();
+  await history.click();
+  await modal.locator('.history-row').first().click();
+  await modal.getByRole('button', { name: 'Before / after', exact: true }).click();
+  await page.setViewportSize({ width: 320, height: 568 });
+  await expect(modal.locator('.history-json')).toBeVisible();
+  expect(await modal.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  const jsonColumns = modal.locator('.history-json > div');
+  const beforeBox = await jsonColumns.nth(0).boundingBox();
+  const afterBox = await jsonColumns.nth(1).boundingBox();
+  expect(afterBox.y).toBeGreaterThanOrEqual(beforeBox.y + beforeBox.height);
+  await snapshotHistory(page, 'History small mobile before and after', testInfo);
   await modal.getByRole('button', { name: 'Close project history' }).click();
   await page.setViewportSize({ width: 1280, height: 720 });
 
