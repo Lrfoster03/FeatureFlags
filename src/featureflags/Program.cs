@@ -54,6 +54,11 @@ builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        context.Request.Path.StartsWithSegments("/invitations")
+            ? RateLimitPartition.GetFixedWindowLimiter("invitation:" + context.Connection.RemoteIpAddress,
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
+            : RateLimitPartition.GetNoLimiter("other"));
 
     options.AddPolicy("api-key", httpContext =>
     {
@@ -234,6 +239,16 @@ builder.Services.AddOpenApi(options =>
 });
 
 var app = builder.Build();
+
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/invitations") || context.Request.Query.ContainsKey("invitationToken"))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    }
+    await next();
+});
 
 
 app.MapOpenApi("/openapi/v1.json");

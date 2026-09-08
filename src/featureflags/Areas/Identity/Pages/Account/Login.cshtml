@@ -8,7 +8,7 @@
 <div class="container py-5" style="max-width: 520px;">
     <h1 class="mb-4">Log in</h1>
 
-    <form method="post" asp-route-returnUrl="@Request.Query["returnUrl"]">
+    <form method="post" asp-route-returnUrl="@Request.Query["returnUrl"]" asp-route-invitationToken="@Request.Query["invitationToken"]">
         <div asp-validation-summary="ModelOnly" class="text-danger" role="alert"></div>
 
         <div class="form-floating mb-3">
@@ -27,6 +27,6 @@
     </form>
 
     <p class="mt-3 mb-0">
-        <a asp-page="./Register" asp-route-returnUrl="@Request.Query["returnUrl"]">Create an account</a>
+        <a asp-page="./Register" asp-route-returnUrl="@Request.Query["returnUrl"]" asp-route-invitationToken="@Request.Query["invitationToken"]">Create an account</a>
     </p>
 </div>
