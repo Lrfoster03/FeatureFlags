@@ -44,7 +44,7 @@
                 @foreach (var flag in featureFlags)
                 {
                     <div @key="(flag.Id, editorVersion)" style="padding: 0.5rem; border-radius: 0.25rem;">
-                        <FlagPill FeatureFlag="flag" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureFlag" />
+                        <FlagPill ProjectId="@ProjectId" FeatureFlag="flag" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureFlag" />
                     </div>
                 }
             </ul>
@@ -70,7 +70,7 @@
                 @foreach (var config in featureConfigs)
                 {
                     <div @key="(config.Id, editorVersion)" style="padding: 0.5rem; border-radius: 0.25rem;">
-                        <ConfigPill Config="config" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureConfig" />
+                        <ConfigPill ProjectId="@ProjectId" Config="config" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureConfig" />
                     </div>
                 }
             </ul>

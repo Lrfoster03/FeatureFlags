@@ -29,6 +29,7 @@ builder.Services.AddScoped<IFeatureFlagConfirmationService, FeatureFlagConfirmat
 builder.Services.AddScoped<IProjectPermissionService, ProjectPermissionService>();
 builder.Services.AddScoped<IProjectProvisioningService, ProjectProvisioningService>();
 builder.Services.AddScoped<ProjectChanges>();
+builder.Services.AddScoped<AuditHistory>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString));

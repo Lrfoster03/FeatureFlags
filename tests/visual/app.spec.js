@@ -35,7 +35,7 @@ test('shows an empty project dashboard', async ({ page }) => {
 
   await expect(page).toHaveURL(/\/projects$/);
   const projectNameInput = page.getByPlaceholder('New project name');
-  const projectLink = page.getByRole('link', { name: projectName });
+  const projectLink = page.locator('a.list-group-item').filter({ hasText: projectName });
 
   await expect(projectNameInput).toBeEditable();
   await projectNameInput.fill(projectName);

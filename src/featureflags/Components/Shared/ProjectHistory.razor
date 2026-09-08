@@ -1,0 +1,259 @@
+@using FeatureFlags.Services
+@using FeatureFlags.Components.Models
+@implements IAsyncDisposable
+@inject AuditHistory History
+@inject IJSRuntime JS
+
+<div class="d-inline-block project-history" @ref="root">
+@if (canView)
+{
+    <button type="button" class="btn @(IconOnly ? "btn-outline-secondary" : "btn-outline-light") btn-sm" aria-label="Project history" title="Project history"
+            aria-haspopup="dialog" disabled="@(module is null)" @ref="opener" @onclick="OpenAsync">
+        <i class="bi bi-clock-history" aria-hidden="true"></i>@if (!IconOnly) { <span> History</span> }
+    </button>
+    <dialog @ref="dialog" class="history-dialog" aria-labelledby="@(instanceId + "-title")">
+        <div class="history-heading border-bottom p-3 d-flex align-items-center gap-3">
+            <div><h2 id="@(instanceId + "-title")" class="h5 mb-0">Project history</h2><div class="small text-muted">@project?.Name</div></div>
+            <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" @onclick="CloseAsync" aria-label="Close project history">Close</button>
+        </div>
+        <div class="history-scroll">
+            <div class="history-content text-body">
+                <details class="history-filters p-3 border-bottom">
+                    <summary>Filters</summary>
+                    <fieldset disabled="@loading" class="border-0 p-0 mt-2">
+                        <div class="row g-2">
+                            @if (EntityType is null)
+                            {
+                                <label class="col-sm-4 form-label">Type
+                                    <select class="form-select form-select-sm" aria-label="Type" @bind="type">
+                                        <option value="">All types</option><option value="flag">Flags</option><option value="config">Configs</option>
+                                        <option value="member">Members</option><option value="key">Client keys</option><option value="project">Projects</option>
+                                    </select>
+                                </label>
+                            }
+                            <label class="col-sm-4 form-label">Who
+                                <select class="form-select form-select-sm" aria-label="Who" @bind="actor"><option value="">Anyone</option>
+                                    @foreach (var option in project?.Actors ?? []) { <option value="@option.Id">@option.Label</option> }
+                                </select>
+                            </label>
+                            <label class="col-sm-4 form-label">Environment
+                                <select class="form-select form-select-sm" aria-label="Environment" @bind="environment"><option value="">All environments</option>
+                                    @foreach (var option in project?.Environments ?? []) { <option value="@option.Id">@option.Label</option> }
+                                </select>
+                            </label>
+                            <label class="col-sm-4 form-label">From<input class="form-control form-control-sm" type="date" value="@fromDate" @onchange="e => fromDate = e.Value?.ToString() ?? string.Empty" /></label>
+                            <label class="col-sm-4 form-label">Through<input class="form-control form-control-sm" type="date" value="@throughDate" @onchange="e => throughDate = e.Value?.ToString() ?? string.Empty" /></label>
+                            <div class="col-sm-4 d-flex align-items-end gap-2 pb-2">
+                                <button type="button" class="btn btn-secondary btn-sm" @onclick="ApplyFilters">Apply</button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="ResetFilters">Reset</button>
+                            </div>
+                        </div>
+                    </fieldset>
+                </details>
+                @if (error is not null)
+                {
+                    <div class="alert alert-danger m-3" role="alert">@error
+                        @if (!denied) { <button type="button" class="btn btn-outline-secondary btn-sm ms-2" disabled="@loading" @onclick="ApplyFilters">Retry</button> }
+                    </div>
+                }
+                @foreach (var row in rows)
+                {
+                    var expanded = details.ContainsKey(row.Id);
+                    var panelId = $"{instanceId}-event-{row.Id}";
+                    <div class="history-event" @key="row.Id">
+                        <button type="button" class="history-row" aria-expanded="@(expanded ? "true" : "false")" aria-controls="@panelId"
+                                disabled="@(detailLoading == row.Id)" @onclick="() => ToggleAsync(row)">
+                            <span class="history-chevron" aria-hidden="true">@(expanded ? "⌄" : "›")</span>
+                            <span class="history-description"><strong class="history-actor">@row.Actor</strong> <span class="history-action">@AuditHistory.Description(row.Action) <strong>@row.EntityName</strong></span>
+                                @if (row.Environment is not null) { <span class="d-block small text-muted">@row.Environment</span> }
+                            </span>
+                            <time datetime="@Iso(row.Time)" data-audit-time="true"><span data-audit-date>…</span><span data-audit-clock class="d-block text-muted">…</span></time>
+                        </button>
+                        <div id="@panelId" hidden="@(!expanded)" class="history-detail">
+                            @if (expanded)
+                            {
+                                var entry = details[row.Id];
+                                var showJson = jsonViews.Contains(row.Id);
+                                <div class="d-flex gap-2 mb-2">
+                                    <button type="button" class="btn btn-sm @(showJson ? "btn-outline-secondary" : "btn-secondary")" aria-pressed="@(!showJson ? "true" : "false")" @onclick="() => jsonViews.Remove(row.Id)">Field changes</button>
+                                    <button type="button" class="btn btn-sm @(showJson ? "btn-secondary" : "btn-outline-secondary")" aria-pressed="@(showJson ? "true" : "false")" @onclick="() => jsonViews.Add(row.Id)">Before / after</button>
+                                </div>
+                                @if (showJson)
+                                {
+                                    <div class="history-json"><div><strong>Before</strong><pre><code>@AuditDiff.Pretty(entry.Before)</code></pre></div>
+                                        <div><strong>After</strong><pre><code>@AuditDiff.Pretty(entry.After)</code></pre></div></div>
+                                }
+                                else
+                                {
+                                    @foreach (var field in AuditDiff.Compare(entry.Before, entry.After))
+                                    {
+                                        <div class="history-field"><code>@AuditDiff.Label(field.Path)</code>
+                                            <span>@if (field.Kind == "Added") { <span>Added <strong>@field.After</strong></span> }
+                                                else if (field.Kind == "Removed") { <span>Removed <span class="text-muted">@field.Before</span></span> }
+                                                else { <span><span class="text-muted">@field.Before</span> → <strong>@field.After</strong></span> }</span>
+                                        </div>
+                                    }
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+                @if (loading) { <p class="p-3 mb-0" role="status">Loading history…</p> }
+                else if (rows.Count == 0 && error is null)
+                {
+                    <p class="p-3 mb-0 text-muted">@(HasFilters ? "No changes match these filters." : "No history yet. Changes made after history was enabled will appear here.")</p>
+                }
+                @if (next is not null) { <div class="p-3"><button type="button" class="btn btn-outline-secondary btn-sm" disabled="@loading" @onclick="LoadMore">Load more</button></div> }
+            </div>
+        </div>
+    </dialog>
+}
+</div>
+
+@code {
+    [Parameter] public string ProjectId { get; set; } = "";
+    [Parameter] public string? EntityType { get; set; }
+    [Parameter] public string? EntityId { get; set; }
+    [Parameter] public bool IconOnly { get; set; } = true;
+    private readonly string instanceId = "history-" + Guid.NewGuid().ToString("N");
+    private ElementReference root, opener, dialog;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<ProjectHistory>? callback;
+    private HistoryProject? project;
+    private string? loadedProject;
+    private bool canView, open, loading, denied, disposed;
+    private string? error;
+    private long? detailLoading;
+    private List<AuditSummary> rows = [];
+    private readonly Dictionary<long, AuditEvent> details = [];
+    private readonly HashSet<long> jsonViews = [];
+    private AuditCursor? next;
+    private AuditFilter applied = new();
+    private string type = "", actor = "", environment = "", fromDate = "", throughDate = "";
+    private CancellationTokenSource requests = new();
+    private bool HasFilters => !string.IsNullOrEmpty(applied.Type) || !string.IsNullOrEmpty(applied.Actor) || applied.Environment is not null || applied.FromUtc is not null || applied.UntilUtc is not null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (loadedProject == ProjectId) return;
+        loadedProject = ProjectId;
+        if (open) await CloseAsync();
+        CancelRequests(); Clear(); canView = false; project = null;
+        if (string.IsNullOrEmpty(ProjectId)) return;
+        var token = requests.Token;
+        try
+        {
+            var current = await History.GetProjectAsync(ProjectId, token: token);
+            if (!token.IsCancellationRequested) { project = current; canView = true; }
+        }
+        catch (OperationCanceledException) { }
+        catch (UnauthorizedAccessException) { }
+        catch (Exception) { if (!token.IsCancellationRequested) { canView = true; error = "Could not load history. Please retry."; } }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Shared/ProjectHistory.razor.js");
+            StateHasChanged();
+        }
+        if (module is not null && open) await module.InvokeVoidAsync("formatTimes", root);
+    }
+
+    private async Task OpenAsync()
+    {
+        if (open) return;
+        Clear(); CancelRequests(); open = true;
+        callback ??= DotNetObjectReference.Create(this);
+        await module!.InvokeVoidAsync("openDialog", dialog, callback);
+        await ApplyFilters();
+    }
+    private async Task CloseAsync()
+    {
+        open = false; CancelRequests();
+        if (module is not null) await module.InvokeVoidAsync("closeDialog", dialog);
+    }
+    [JSInvokable]
+    public Task DialogClosed()
+    {
+        if (disposed) return Task.CompletedTask;
+        open = false; CancelRequests();
+        return InvokeAsync(StateHasChanged);
+    }
+    private void CancelRequests() { requests.Cancel(); requests.Dispose(); requests = new(); }
+    private void Clear()
+    {
+        rows = []; details.Clear(); jsonViews.Clear(); next = null; error = null; detailLoading = null; loading = false; denied = false;
+        type = actor = environment = fromDate = throughDate = "";
+    }
+    private async Task ResetFilters() { type = actor = environment = fromDate = throughDate = ""; await ApplyFilters(); }
+    private async Task ApplyFilters()
+    {
+        CancelRequests(); rows = []; details.Clear(); jsonViews.Clear(); next = null; detailLoading = null;
+        var token = requests.Token;
+        loading = true; error = null; denied = false;
+        try
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Shared/ProjectHistory.razor.js");
+            var dates = await module.InvokeAsync<DateBounds>("dateBounds", fromDate, throughDate);
+            applied = new(EntityType ?? type, EntityId, actor, int.TryParse(environment, out var env) ? env : null, dates.FromUtc, dates.UntilUtc);
+            var current = await History.GetProjectAsync(ProjectId, includeFilters: true, token: token);
+            var page = await History.ListAsync(ProjectId, applied, token: token);
+            if (token.IsCancellationRequested || !open) return;
+            project = current; rows = page.Events.ToList(); next = page.Next;
+        }
+        catch (OperationCanceledException) { }
+        catch (UnauthorizedAccessException ex) { if (!token.IsCancellationRequested) Denied(ex.Message); }
+        catch (ArgumentException ex) { if (!token.IsCancellationRequested) error = ex.Message; }
+        catch (Exception) { if (!token.IsCancellationRequested) error = "Could not load history. Please retry."; }
+        finally { if (!token.IsCancellationRequested) loading = false; }
+    }
+    private async Task LoadMore()
+    {
+        if (loading || next is null) return;
+        var token = requests.Token; loading = true; error = null;
+        try
+        {
+            var page = await History.ListAsync(ProjectId, applied, next, token: token);
+            if (token.IsCancellationRequested || !open) return;
+            rows.AddRange(page.Events); next = page.Next;
+        }
+        catch (OperationCanceledException) { }
+        catch (UnauthorizedAccessException ex) { if (!token.IsCancellationRequested) Denied(ex.Message); }
+        catch (Exception) { if (!token.IsCancellationRequested) error = "Could not load more history. Please retry."; }
+        finally { if (!token.IsCancellationRequested) loading = false; }
+    }
+    private async Task ToggleAsync(AuditSummary row)
+    {
+        if (details.Remove(row.Id)) { jsonViews.Remove(row.Id); return; }
+        var token = requests.Token; detailLoading = row.Id;
+        try
+        {
+            var entry = await History.DetailAsync(ProjectId, row.Id, token);
+            if (!token.IsCancellationRequested && open) details[row.Id] = entry;
+        }
+        catch (OperationCanceledException) { }
+        catch (UnauthorizedAccessException ex) { if (!token.IsCancellationRequested) Denied(ex.Message); }
+        catch (Exception) { if (!token.IsCancellationRequested) error = "Could not load this change. Please retry."; }
+        finally { if (!token.IsCancellationRequested) detailLoading = null; }
+    }
+    private void Denied(string message)
+    {
+        CancelRequests(); loading = false; detailLoading = null; denied = true; error = message;
+        rows.Clear(); details.Clear(); jsonViews.Clear(); next = null; project = null;
+    }
+    private static string Iso(DateTime time) => DateTime.SpecifyKind(time, DateTimeKind.Utc).ToString("O");
+    private sealed record DateBounds(DateTime? FromUtc, DateTime? UntilUtc);
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        requests.Cancel(); requests.Dispose();
+        if (module is not null)
+        {
+            try { await module.InvokeVoidAsync("disposeDialog", dialog); await module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+        }
+        callback?.Dispose();
+    }
+}
