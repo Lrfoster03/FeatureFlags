@@ -73,6 +73,8 @@ public sealed class AuditHistory(IDbContextFactory<FeatureFlagDbContext> factory
 
     public static string Description(string action) => action switch
     {
+        "invitation.created" => "invited", "invitation.renewed" => "renewed invitation for",
+        "invitation.accepted" => "accepted invitation for", "invitation.revoked" => "revoked invitation for",
         "project.created" => "created project", "flag.created" => "created flag", "flag.updated" => "updated flag", "flag.deleted" => "deleted flag",
         "config.created" => "created config", "config.updated" => "updated config", "config.deleted" => "deleted config",
         "member.added" => "added member", "member.restored" => "restored member", "member.role_changed" => "changed role for",

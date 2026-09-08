@@ -1,0 +1,53 @@
+name: Invitation journeys
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  invitations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: invitations
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d invitations"
+          --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://127.0.0.1:8081
+      ConnectionStrings__FeatureFlags: Host=127.0.0.1;Port=5432;Database=invitations;Username=postgres
+      BASE_URL: http://127.0.0.1:8081
+      InvitationEmail__PublicBaseUrl: http://127.0.0.1:8081
+      InvitationEmail__PickupDirectory: ${{ github.workspace }}/src/featureflags/App_Data/invitation-mail
+      INVITATION_MAIL_DIR: ${{ github.workspace }}/src/featureflags/App_Data/invitation-mail
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Start app
+        run: |
+          mkdir -p "$INVITATION_MAIL_DIR"
+          dotnet build src/featureflags
+          dotnet run --no-build --no-launch-profile --project src/featureflags > "$RUNNER_TEMP/invitation-app.log" 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent "$BASE_URL/healthz"; then exit 0; fi
+            sleep 2
+          done
+          cat "$RUNNER_TEMP/invitation-app.log"
+          exit 1
+      - name: Test invitation journeys
+        run: npx playwright test tests/visual/invitations.spec.js
