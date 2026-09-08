@@ -4,6 +4,8 @@ namespace FeatureFlags.Components.Models;
 
 public class FeatureConfig : IConfig
 {
+    public int Revision { get; set; } = 1;
+
     public int Id { get; set; }
 
     public int ProjectEnvironmentId { get; set; }

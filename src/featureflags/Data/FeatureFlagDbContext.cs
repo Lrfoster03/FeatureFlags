@@ -6,17 +6,46 @@ using System.Text.Json.Nodes;
 
 namespace FeatureFlags.Data;
 
-public class FeatureFlagDbContext(DbContextOptions<FeatureFlagDbContext> options) : DbContext(options)
+public class FeatureFlagDbContext : DbContext
 {
+    public FeatureFlagDbContext(DbContextOptions<FeatureFlagDbContext> options) : base(options)
+    {
+        SavingChanges += (_, _) => AdvanceRevisions();
+    }
+
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<FeatureFlag> FeatureFlags => Set<FeatureFlag>();
     public DbSet<FeatureConfig> Configs => Set<FeatureConfig>();
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectEnvironment> ProjectEnvironments => Set<ProjectEnvironment>();
     public DbSet<ClientKey> ClientKeys => Set<ClientKey>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+
+    private void AdvanceRevisions()
+    {
+        foreach (var entry in ChangeTracker.Entries().Where(e => e.State == EntityState.Modified &&
+                     e.Metadata.FindProperty("Revision")?.IsConcurrencyToken == true))
+        {
+            var revision = entry.Property("Revision");
+            // Keep the original token for the WHERE clause, including on retries after a failed save.
+            revision.CurrentValue = checked((int)revision.OriginalValue! + 1);
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        var audit = modelBuilder.Entity<AuditEvent>();
+        audit.Property(e => e.Before).HasColumnType("jsonb");
+        audit.Property(e => e.After).HasColumnType("jsonb");
+        audit.HasIndex(e => new { e.ProjectId, e.OccurredAtUtc, e.Id }).IsDescending(false, true, true);
+        audit.HasIndex(e => new { e.ProjectId, e.EntityType, e.EntityId, e.OccurredAtUtc, e.Id })
+            .IsDescending(false, false, false, true, true);
+        audit.HasIndex(e => new { e.OperationId, e.EntityType, e.EntityId }).IsUnique();
+
+        foreach (var type in new[] { typeof(Project), typeof(ProjectEnvironment), typeof(ProjectMember),
+                     typeof(FeatureFlag), typeof(FeatureConfig), typeof(ClientKey) })
+            modelBuilder.Entity(type).Property<int>("Revision").IsConcurrencyToken();
+
         modelBuilder.Entity<Project>()
             .HasIndex(p => p.Name)
             .IsUnique();

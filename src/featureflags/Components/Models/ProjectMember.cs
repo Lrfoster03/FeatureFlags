@@ -2,6 +2,8 @@ namespace FeatureFlags.Components.Models;
 
 public class ProjectMember
 {
+    public int Revision { get; set; } = 1;
+
     public int Id { get; set; }
 
     public string UserId { get; set; } = string.Empty;

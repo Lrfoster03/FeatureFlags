@@ -2,6 +2,8 @@ namespace FeatureFlags.Components.Models;
 
 public class ProjectEnvironment
 {
+    public int Revision { get; set; } = 1;
+
     public int Id { get; set; }
 
     public string ProjectId { get; set; } = string.Empty;
