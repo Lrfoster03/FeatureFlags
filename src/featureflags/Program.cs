@@ -29,6 +29,8 @@ builder.Services.AddScoped<IFeatureFlagConfirmationService, FeatureFlagConfirmat
 builder.Services.AddScoped<IProjectPermissionService, ProjectPermissionService>();
 builder.Services.AddScoped<IProjectProvisioningService, ProjectProvisioningService>();
 builder.Services.AddScoped<ProjectChanges>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<ProjectInvitations>();
 builder.Services.AddScoped<AuditHistory>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>

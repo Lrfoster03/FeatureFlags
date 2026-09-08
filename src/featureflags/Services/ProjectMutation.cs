@@ -16,9 +16,20 @@ public abstract class ProjectMutation(
     AuthenticationStateProvider authentication)
 {
     // Deliberately non-virtual: derived actions describe changes, never saving or auditing.
-    protected async Task<IReadOnlyList<AuditEvent>> ExecuteAsync(
+    protected Task<IReadOnlyList<AuditEvent>> ExecuteAsync(
         string projectId, Guid operationId, ProjectRole minimumRole, Func<MutationContext, Task> change,
         bool creatingProject = false, CancellationToken cancellationToken = default)
+        => ExecuteCoreAsync(projectId, operationId, minimumRole, change, creatingProject, false, cancellationToken);
+
+    // This is the only additional nonmember path: its fixed action validates the emailed token and current account.
+    protected Task<IReadOnlyList<AuditEvent>> ExecuteInvitationAcceptanceAsync(string projectId, Guid operationId,
+        string token, IDbContextFactory<ApplicationDbContext> identityFactory, TimeProvider clock)
+        => ExecuteCoreAsync(projectId, operationId, ProjectRole.Viewer,
+            context => ProjectInvitations.ApplyAcceptanceAsync(context, token, identityFactory, clock), false, true, default);
+
+    private async Task<IReadOnlyList<AuditEvent>> ExecuteCoreAsync(string projectId, Guid operationId,
+        ProjectRole minimumRole, Func<MutationContext, Task> change, bool creatingProject,
+        bool acceptingInvitation, CancellationToken cancellationToken)
     {
         var principal = (await authentication.GetAuthenticationStateAsync()).User;
         var actorId = principal.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -30,7 +41,7 @@ public abstract class ProjectMutation(
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var member = await db.ProjectMembers.AsNoTracking().SingleOrDefaultAsync(m =>
             m.ProjectId == projectId && m.UserId == actorId && m.RevokedAt == null, cancellationToken);
-        if (!creatingProject && (member is null || member.Role < minimumRole))
+        if (!creatingProject && !acceptingInvitation && (member is null || member.Role < minimumRole))
             throw new UnauthorizedAccessException("You do not have permission to change this project.");
 
         await using var transaction = await db.Database.BeginTransactionAsync(
@@ -153,7 +164,8 @@ public sealed class MutationContext(FeatureFlagDbContext db, string projectId, s
                     e.Id == environmentId && e.ProjectId == projectId, cancellationToken)
                     ?? throw new UnauthorizedAccessException("The resource does not belong to this project.");
             }
-            if (entity is Project p && p.Id != projectId || entity is ProjectMember m && m.ProjectId != projectId)
+            if (entity is Project p && p.Id != projectId || entity is ProjectMember m && m.ProjectId != projectId ||
+                entity is ProjectInvitation invitation && invitation.ProjectId != projectId)
                 throw new UnauthorizedAccessException("The resource does not belong to this project.");
             if (entity is Project created && action == "project.created" &&
                 (created.Environments.Any(e => e.ProjectId != projectId) || created.Members.Any(m => m.ProjectId != projectId)))
@@ -175,17 +187,18 @@ internal static class AuditSnapshot
         FeatureConfig => ["Name", "Description", "Value", "Schema"],
         ProjectMember => ["Email", "DisplayName", "Role", "RevokedAt"],
         ClientKey => ["RevokedAt"],
+        ProjectInvitation => ["TokenHash", "IssuedAt", "ExpiresAt", "AcceptedAt", "AcceptedByUserId", "RevokedAt"],
         _ => []
     };
     public static string Type(object entity) => entity switch
     {
-        Project => "project", ProjectEnvironment => "environment", ProjectMember => "member",
+        ProjectInvitation => "invitation", Project => "project", ProjectEnvironment => "environment", ProjectMember => "member",
         FeatureFlag => "flag", FeatureConfig => "config", ClientKey => "key",
         _ => throw new InvalidOperationException("This resource has no audit snapshot policy.")
     };
     public static string Name(object entity) => entity switch
     {
-        Project p => p.Name, ProjectEnvironment e => e.Name, ProjectMember m => m.Email,
+        ProjectInvitation i => i.Email, Project p => p.Name, ProjectEnvironment e => e.Name, ProjectMember m => m.Email,
         FeatureFlag f => f.Name, FeatureConfig c => c.Name, ClientKey k => k.Name,
         _ => throw new InvalidOperationException("Unknown audit resource.")
     };
@@ -197,6 +210,7 @@ internal static class AuditSnapshot
         ClientKey k => new { k.Name, Active = k.RevokedAt == null },
         Project p => new { p.Name, Environments = p.Environments.Select(e => e.Name), Owners = p.Members.Select(m => m.Email) },
         ProjectEnvironment e => new { e.Name },
+        ProjectInvitation i => new { i.Email, Role = i.Role.ToString(), i.IssuedAt, i.ExpiresAt, i.AcceptedAt, i.RevokedAt },
         _ => throw new InvalidOperationException("This resource has no audit snapshot policy.")
     }, Options)!;
 
@@ -204,6 +218,10 @@ internal static class AuditSnapshot
     {
         var expected = entity switch
         {
+            ProjectInvitation when state == EntityState.Added => "invitation.created",
+            ProjectInvitation i when before is ProjectInvitation old && old.AcceptedAt == null && i.AcceptedAt != null => "invitation.accepted",
+            ProjectInvitation i when before is ProjectInvitation old && old.RevokedAt == null && i.RevokedAt != null => "invitation.revoked",
+            ProjectInvitation i when before is ProjectInvitation old && old.IssuedAt != i.IssuedAt => "invitation.renewed",
             Project when state == EntityState.Added => "project.created",
             FeatureFlag => "flag." + Verb(state),
             FeatureConfig => "config." + Verb(state),
