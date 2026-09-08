@@ -31,6 +31,9 @@ builder.Services.AddScoped<IProjectProvisioningService, ProjectProvisioningServi
 builder.Services.AddScoped<ProjectChanges>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<ProjectInvitations>();
+builder.Services.Configure<InvitationEmailOptions>(builder.Configuration.GetSection("InvitationEmail"));
+builder.Services.AddScoped<InvitationEmail>();
+builder.Services.AddScoped<InvitationDelivery>();
 builder.Services.AddScoped<AuditHistory>();
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
