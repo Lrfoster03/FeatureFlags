@@ -9,6 +9,20 @@ on:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    env:
+      AUDIT_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Database=featureflags_tests;Username=featureflags;Password=audit-ci-only
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: featureflags
+          POSTGRES_PASSWORD: audit-ci-only
+          POSTGRES_DB: featureflags_tests
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U featureflags -d featureflags_tests"
+          --health-interval 2s --health-timeout 5s --health-retries 30
 
     steps:
       - name: Check out repository
@@ -17,6 +31,7 @@ jobs:
       - name: Run restore, build, migration check, and tests in SDK container
         run: |
           docker run --rm \
+            --network host -e AUDIT_TEST_POSTGRES \
             -v "$GITHUB_WORKSPACE:/workspace" \
             -w /workspace \
             mcr.microsoft.com/dotnet/sdk:10.0 \
@@ -25,7 +40,7 @@ jobs:
               dotnet build --no-restore --configuration Release
               dotnet tool restore
               dotnet tool install --tool-path /tmp/dotnet-tools dotnet-ef --version 10.*
-              /tmp/dotnet-tools/dotnet-ef migrations has-pending-model-changes --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj
+              /tmp/dotnet-tools/dotnet-ef migrations has-pending-model-changes --project src/featureflags/FeatureFlags.csproj --startup-project src/featureflags/FeatureFlags.csproj --context FeatureFlagDbContext
               dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./TestResults
               dotnet tool run reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:"CoverageReport" -reporttypes:"Html;MarkdownSummaryGithub"
             '

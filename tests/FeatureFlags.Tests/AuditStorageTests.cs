@@ -22,7 +22,7 @@ public class AuditStorageTests
             Before = "{\"value\":{\"enabled\":true}}", OperationId = Guid.NewGuid(), OccurredAtUtc = DateTime.UtcNow
         };
         db.AuditEvents.Add(audit);
-        await db.SaveChangesAsync();
+        await db.SaveSeedChangesAsync();
         db.ChangeTracker.Clear();
         var saved = await db.AuditEvents.SingleAsync();
         Assert.Equal(audit.Before, saved.Before);
@@ -32,6 +32,6 @@ public class AuditStorageTests
 
         db.AuditEvents.Add(new AuditEvent { ProjectId = audit.ProjectId, OperationId = audit.OperationId,
             EntityType = audit.EntityType, EntityId = audit.EntityId });
-        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveSeedChangesAsync());
     }
 }

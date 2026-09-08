@@ -1,10 +1,12 @@
 using FeatureFlags.Components.Models;
 using FeatureFlags.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Components.Authorization;
 
 namespace FeatureFlags.Services;
 
-public sealed class ProjectProvisioningService(IDbContextFactory<FeatureFlagDbContext> dbFactory) : IProjectProvisioningService
+public sealed class ProjectProvisioningService(IDbContextFactory<FeatureFlagDbContext> dbFactory, AuthenticationStateProvider authentication)
+    : ProjectMutation(dbFactory, authentication), IProjectProvisioningService
 {
     public async Task<Project> CreateProjectForUserAsync(
         ApplicationUser user,
@@ -38,11 +40,14 @@ public sealed class ProjectProvisioningService(IDbContextFactory<FeatureFlagDbCo
             }
         };
 
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
-        db.Projects.Add(project);
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
+        project.Name = ProjectChanges.ValidateName(project.Name);
+        await ExecuteAsync(project.Id, Guid.NewGuid(), ProjectRole.Owner, context =>
+        {
+            if (context.ActorId != user.Id) throw new UnauthorizedAccessException("Create a project as the signed-in user.");
+            context.Db.Projects.Add(project);
+            context.Record(project, "project.created");
+            return Task.CompletedTask;
+        }, creatingProject: true, cancellationToken);
 
         return project;
     }

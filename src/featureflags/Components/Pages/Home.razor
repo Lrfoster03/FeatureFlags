@@ -10,7 +10,8 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 
-@inject FeatureFlagDbContext Db
+@inject IDbContextFactory<FeatureFlagDbContext> DbFactory
+@inject ProjectChanges Changes
 @inject IFeatureFlagConfirmationService ConfirmationService
 @inject IProjectPermissionService PermissionService
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -22,6 +23,7 @@
 <PageTitle>Feature Flags</PageTitle>
 
 
+<fieldset disabled="@isSaving" class="border-0 p-0 m-0">
 <div style="overflow-y: scroll;">
     <section class="mb-4">
         <div class="d-flex align-items-center justify-content-between px-2">
@@ -41,7 +43,7 @@
             <ul class="list-group">
                 @foreach (var flag in featureFlags)
                 {
-                    <div @key="flag.Id" style="padding: 0.5rem; border-radius: 0.25rem;">
+                    <div @key="(flag.Id, editorVersion)" style="padding: 0.5rem; border-radius: 0.25rem;">
                         <FlagPill FeatureFlag="flag" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureFlag" />
                     </div>
                 }
@@ -67,7 +69,7 @@
             <ul class="list-group">
                 @foreach (var config in featureConfigs)
                 {
-                    <div @key="config.Id" style="padding: 0.5rem; border-radius: 0.25rem;">
+                    <div @key="(config.Id, editorVersion)" style="padding: 0.5rem; border-radius: 0.25rem;">
                         <ConfigPill Config="config" OnChanged="MarkConfigDirty" OnDelete="DeleteFeatureConfig" />
                     </div>
                 }
@@ -95,6 +97,8 @@
     }
 </div>
 
+</fieldset>
+
 @if (!string.IsNullOrWhiteSpace(errorMessage))
 {
     <div style="position: fixed; bottom: 5rem; right: 1rem; z-index: 2001; min-width: 320px;">
@@ -107,308 +111,103 @@
 <ConfirmDialog @ref="confirmDialog" />
 
 @code {
-    [Parameter]
-    public string ProjectId { get; set; } = string.Empty;
-    private List<FeatureFlag> featureFlags = new();
-    private List<FeatureConfig> featureConfigs = new();
-
-    // Dirty tracking for unsaved changes
-    private HashSet<IConfig> dirtyConfigs = new();
-
+    [Parameter] public string ProjectId { get; set; } = "";
+    private List<FeatureFlag> featureFlags = [];
+    private List<FeatureConfig> featureConfigs = [];
+    private readonly Dictionary<(Type, int), IConfig> dirtyConfigs = [];
+    private readonly Dictionary<string, Guid> pendingOperations = [];
     private bool HasUnsavedChanges => dirtyConfigs.Count > 0;
     private string? errorMessage;
     private ConfirmDialog confirmDialog = default!;
-
-    private Project? project;
     private ProjectEnvironment? environment;
+    private string? loadedProject;
+    private bool isSaving;
+    private int editorVersion;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
-        errorMessage = null;
-
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        if (string.IsNullOrWhiteSpace(userId))
+        if (loadedProject == ProjectId) return;
+        loadedProject = ProjectId;
+        environment = null;
+        dirtyConfigs.Clear(); pendingOperations.Clear();
+        featureFlags = []; featureConfigs = []; errorMessage = null;
+        var user = (await AuthenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (!await PermissionService.CanViewProjectAsync(ProjectId, user.FindFirstValue(ClaimTypes.NameIdentifier)))
         {
-            var returnUrl = Uri.EscapeDataString($"/projects/{ProjectId}/home");
-            Navigation.NavigateTo($"/Identity/Account/Login?returnUrl={returnUrl}", forceLoad: true);
+            errorMessage = "You do not have permission to access this project.";
             return;
         }
-
-        project = await Db.Projects
-            .Include(p => p.Environments)
-            .FirstOrDefaultAsync(p => p.Id == ProjectId);
-
-        if (project is null)
-        {
-            errorMessage = "Project was not found.";
-            return;
-        }
-
-        var isMember = await Db.ProjectMembers
-            .AnyAsync(m =>
-                m.ProjectId == project.Id &&
-                m.UserId == userId &&
-                m.RevokedAt == null);
-
-        if (!isMember)
-        {
-            errorMessage = "403: You do not have permission to access this project.";
-            return;
-        }
-
-        environment = project.Environments.FirstOrDefault();
-
-        if (environment is null)
-        {
-            errorMessage = "No project environment found for this project.";
-            return;
-        }
-
+        await using var db = await DbFactory.CreateDbContextAsync();
+        environment = await db.ProjectEnvironments.AsNoTracking().Where(e => e.ProjectId == ProjectId).OrderBy(e => e.Id).FirstOrDefaultAsync();
+        if (environment is null) { errorMessage = "No project environment found for this project."; return; }
         await ReloadConfigsAsync();
-    }
-
-    private async Task<bool> EnsureCanEditAsync()
-    {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var currentUserId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (project is null)
-        {
-            errorMessage = "Project was not loaded.";
-            return false;
-        }
-
-        var canEdit = await PermissionService.CanEditFlagsAsync(project.Id, currentUserId);
-
-        if (!canEdit)
-        {
-            errorMessage = "You do not have permission to edit feature flags.";
-            return false;
-        }
-
-        return true;
     }
 
     private async Task ReloadConfigsAsync()
     {
-        if (environment is null)
-        {
-            featureFlags = new();
-            featureConfigs = new();
-            return;
-        }
-
-        featureFlags = await Db.FeatureFlags
-            .Where(f => f.ProjectEnvironmentId == environment.Id)
-            .OrderBy(f => f.Name)
-            .ToListAsync();
-
-        featureConfigs = await Db.Configs
-            .Where(c => c.ProjectEnvironmentId == environment.Id)
-            .OrderBy(c => c.Name)
-            .ToListAsync();
+        if (environment is null) return;
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var flags = await db.FeatureFlags.AsNoTracking().Where(f => f.ProjectEnvironmentId == environment.Id).OrderBy(f => f.Name).ToListAsync();
+        var configs = await db.Configs.AsNoTracking().Where(c => c.ProjectEnvironmentId == environment.Id).OrderBy(c => c.Name).ToListAsync();
+        featureFlags = flags.Select(f => dirtyConfigs.TryGetValue((typeof(FeatureFlag), f.Id), out var draft) ? (FeatureFlag)draft : f).ToList();
+        featureConfigs = configs.Select(c => dirtyConfigs.TryGetValue((typeof(FeatureConfig), c.Id), out var draft) ? (FeatureConfig)draft : c).ToList();
     }
 
-    private async Task AddFlag()
+    private Task AddFlag() => AddItem(false);
+    private Task AddConfig() => AddItem(true);
+    private async Task AddItem(bool config)
     {
-        if (!await EnsureCanEditAsync())
-            return;
-
-        errorMessage = null;
-
-
-        if (this.environment is null)
-        {
-            errorMessage = "No project environment exists. Create a project environment first.";
-            return;
-        }
-
-        var newItem = new FeatureFlag
-        {
-            Name = $"Item {featureFlags.Count + 1}",
-            Description = "",
-            IsEnabled = false,
-            PercentageRollout = 0,
-            ProjectEnvironmentId = environment.Id
-        };
-
-        Db.FeatureFlags.Add(newItem);
-        await Db.SaveChangesAsync();
-
-        featureFlags.Add(newItem);
-
-        await ReloadConfigsAsync();
-    }
-
-    private async Task AddConfig()
-    {
-        if (!await EnsureCanEditAsync())
-            return;
-
-        errorMessage = null;
-
-
-        if (this.environment is null)
-        {
-            errorMessage = "No project environment exists. Create a project environment first.";
-            return;
-        }
-
-        var newItem = new FeatureConfig(
-        )
-        {
-            Name = $"Config {featureConfigs.Count + 1}",
-            Description = "",
-            ProjectEnvironmentId = environment.Id
-        };
-
-        Db.Configs.Add(newItem);
-        await Db.SaveChangesAsync();
-
-        featureConfigs.Add(newItem);
-
-        await ReloadConfigsAsync();
+        if (environment is null) return;
+        await MutateAsync(config ? "add-config" : "add-flag", id => Changes.AddItemAsync(ProjectId, environment.Id, config, id));
     }
 
     private Task MarkConfigDirty(IConfig config)
     {
-        dirtyConfigs.Add(config);
+        dirtyConfigs[(config.GetType(), config.Id)] = config;
+        pendingOperations.Remove("save");
         return Task.CompletedTask;
     }
 
-    private async Task DeleteFeatureFlag(FeatureFlag featureFlag)
+    private Task DeleteFeatureFlag(FeatureFlag flag) => DeleteItem(flag, "feature flag");
+    private Task DeleteFeatureConfig(FeatureConfig config) => DeleteItem(config, "feature config");
+    private async Task DeleteItem(IConfig item, string label)
     {
-        if (!await EnsureCanEditAsync())
-            return;
-
-        errorMessage = null;
-
-        var confirmed = await ConfirmationService.ConfirmDeleteAsync(confirmDialog, featureFlag.Name);
-
-        if (!confirmed)
-            return;
-
-        try
-        {
-            var existing = await Db.FeatureFlags.FindAsync(featureFlag.Id);
-
-            if (existing is null)
-            {
-                errorMessage = $"Feature flag '{featureFlag.Name}' was not found.";
-                return;
-            }
-
-            Db.FeatureFlags.Remove(existing);
-            await Db.SaveChangesAsync();
-
-            featureFlags.RemoveAll(f => f.Id == featureFlag.Id);
-        }
-        catch (Exception)
-        {
-            errorMessage = $"Failed to delete feature flag '{featureFlag.Name}'.";
-        }
-
-        await ReloadConfigsAsync();
+        if (isSaving || !await ConfirmationService.ConfirmDeleteAsync(confirmDialog, item.Name)) return;
+        await MutateAsync($"delete-{item.GetType().Name}-{item.Id}", id => Changes.DeleteItemAsync(ProjectId, item, id),
+            () => dirtyConfigs.Remove((item.GetType(), item.Id)), $"Failed to delete {label} '{item.Name}'.");
     }
 
-    private async Task DeleteFeatureConfig(FeatureConfig featureConfig)
+    private Task SaveAllChanges() => MutateAsync("save", id => Changes.SaveItemsAsync(ProjectId, dirtyConfigs.Values.ToArray(), id), () =>
     {
-        if (!await EnsureCanEditAsync())
-            return;
+        dirtyConfigs.Clear(); editorVersion++;
+    });
 
-        errorMessage = null;
-
-        var confirmed = await ConfirmationService.ConfirmDeleteAsync(confirmDialog, featureConfig.Name);
-
-        if (!confirmed)
-            return;
-
+    private async Task MutateAsync(string action, Func<Guid, Task> mutation, Action? saved = null, string? failureMessage = null)
+    {
+        if (isSaving) return;
+        isSaving = true; errorMessage = null;
+        if (!pendingOperations.TryGetValue(action, out var operation)) pendingOperations[action] = operation = Guid.NewGuid();
         try
         {
-            var existing = await Db.Configs.FindAsync(featureConfig.Id);
-
-            if (existing is null)
-            {
-                errorMessage = $"Feature config '{featureConfig.Name}' was not found.";
-                return;
-            }
-
-            Db.Configs.Remove(existing);
-            await Db.SaveChangesAsync();
-
-            featureConfigs.RemoveAll(f => f.Id == featureConfig.Id);
-        }
-        catch (Exception)
-        {
-            errorMessage = $"Failed to delete feature config '{featureConfig.Name}'.";
-        }
-
-        await ReloadConfigsAsync();
-    }
-
-
-    private async Task SaveAllChanges()
-    {
-        if (!await EnsureCanEditAsync())
-            return;
-
-        errorMessage = null;
-
-        foreach (IConfig config in dirtyConfigs)
-        {
-            config.Name = config.Name.Trim();
-
-            if (config is FeatureFlag flag)
-            {
-                var duplicateExists = await Db.FeatureFlags.AnyAsync(f =>
-                    f.ProjectEnvironmentId == flag.ProjectEnvironmentId &&
-                    f.Name == flag.Name &&
-                    f.Id != flag.Id);
-
-                if (duplicateExists)
-                {
-                    errorMessage = $"A feature flag named '{flag.Name}' already exists.";
-                    return;
-                }
-
-                Db.FeatureFlags.Update(flag);
-            }
-            else if (config is FeatureConfig featureConfig)
-            {
-                var duplicateExists = await Db.Configs.AnyAsync(c =>
-                    c.ProjectEnvironmentId == featureConfig.ProjectEnvironmentId &&
-                    c.Name == featureConfig.Name &&
-                    c.Id != featureConfig.Id);
-
-                if (duplicateExists)
-                {
-                    errorMessage = $"A feature config named '{featureConfig.Name}' already exists.";
-                    return;
-                }
-
-                Db.Configs.Update(featureConfig);
-            }
-        }
-
-        try
-        {
-            await Db.SaveChangesAsync();
-            dirtyConfigs.Clear();
+            await mutation(operation);
+            saved?.Invoke();
             await ReloadConfigsAsync();
+            pendingOperations.Remove(action);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateConcurrencyException)
         {
-            errorMessage = "Failed to save changes. Check for duplicate names.";
+            errorMessage = "This item changed since you opened it. Discard to reload, then review the latest version before saving.";
         }
+        catch (UnauthorizedAccessException ex) { errorMessage = ex.Message; }
+        catch (ArgumentException ex) { errorMessage = ex.Message; }
+        catch (Exception) { errorMessage = failureMessage ?? "Failed to save changes. Your edits have been kept; check for duplicate names or retry."; }
+        finally { isSaving = false; }
     }
 
     private async Task DiscardAllChanges()
     {
-        errorMessage = null;
-        dirtyConfigs.Clear();
-
-        Db.ChangeTracker.Clear();
+        if (isSaving) return;
+        errorMessage = null; dirtyConfigs.Clear(); pendingOperations.Clear(); editorVersion++;
         await ReloadConfigsAsync();
     }
 }

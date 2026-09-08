@@ -57,7 +57,7 @@ public class FeatureFlagDbContextTests
             PercentageRollout = 100,
             ProjectEnvironmentId = environmentId
         });
-        await context.SaveChangesAsync();
+        await context.SaveSeedChangesAsync();
 
         context.FeatureFlags.Add(new FeatureFlag
         {
@@ -67,7 +67,7 @@ public class FeatureFlagDbContextTests
             ProjectEnvironmentId = environmentId
         });
 
-        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveSeedChangesAsync());
     }
 
     [Fact]
@@ -101,7 +101,7 @@ public class FeatureFlagDbContextTests
                 }
             });
 
-            await context.SaveChangesAsync();
+            await context.SaveSeedChangesAsync();
         }
 
         await using (var assertContext = CreateContext(connection))
@@ -125,21 +125,21 @@ public class FeatureFlagDbContextTests
         var environmentId = await SeedProjectEnvironmentAsync(first);
         var flag = new FeatureFlag { Name = "Checkout", ProjectEnvironmentId = environmentId };
         first.FeatureFlags.Add(flag);
-        await first.SaveChangesAsync();
+        await first.SaveSeedChangesAsync();
         Assert.Equal(1, flag.Revision);
 
         await using var stale = CreateContext(connection);
         var staleFlag = await stale.FeatureFlags.SingleAsync();
         flag.PercentageRollout = 25;
-        first.SaveChanges();
+        first.SaveSeedChanges();
         Assert.Equal(2, flag.Revision);
-        Assert.Equal(0, first.SaveChanges());
+        Assert.Equal(0, first.SaveSeedChanges());
         Assert.Equal(2, flag.Revision);
         Assert.Equal(1, (await first.ProjectEnvironments.SingleAsync()).Revision);
 
         staleFlag.PercentageRollout = 75;
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync());
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveSeedChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveSeedChangesAsync());
         Assert.Equal(1, stale.Entry(staleFlag).Property(f => f.Revision).OriginalValue);
         Assert.Equal(2, staleFlag.Revision);
 
@@ -160,22 +160,22 @@ public class FeatureFlagDbContextTests
         var config = new FeatureConfig { Name = "Checkout", ProjectEnvironmentId = environmentId,
             Value = JsonNode.Parse("{\"checkout\":{\"limit\":5}}")!.AsObject() };
         first.Configs.Add(config);
-        await first.SaveChangesAsync();
+        await first.SaveSeedChangesAsync();
         Assert.Equal(1, config.Revision);
 
         await using var stale = CreateContext(connection);
         var staleConfig = await stale.Configs.SingleAsync();
         config.Value["checkout"]!["limit"] = 10;
-        await first.SaveChangesAsync();
+        await first.SaveSeedChangesAsync();
         Assert.Equal(2, config.Revision);
         config.Schema["type"] = "object";
-        await first.SaveChangesAsync();
+        await first.SaveSeedChangesAsync();
         Assert.Equal(3, config.Revision);
 
         staleConfig.Value["checkout"]!["limit"] = 20;
-        Assert.Throws<DbUpdateConcurrencyException>(() => stale.SaveChanges());
+        Assert.Throws<DbUpdateConcurrencyException>(() => stale.SaveSeedChanges());
         stale.Configs.Remove(staleConfig);
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => stale.SaveSeedChangesAsync());
 
         await using var verify = CreateContext(connection);
         var saved = await verify.Configs.SingleAsync();
@@ -219,7 +219,7 @@ public class FeatureFlagDbContextTests
         };
 
         context.Projects.Add(project);
-        await context.SaveChangesAsync();
+        await context.SaveSeedChangesAsync();
 
         return project.Environments.Single().Id;
     }
