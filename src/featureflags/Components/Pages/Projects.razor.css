@@ -1,0 +1,28 @@
+::deep .project-create-form {
+    width: min(100%, 28rem);
+}
+
+.project-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.project-list .badge {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: left;
+}
+
+@media (max-width: 575.98px) {
+    ::deep .project-create-form .input-group {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    ::deep .project-create-form .input-group > * {
+        width: 100%;
+        margin-left: 0;
+        border-radius: var(--bs-border-radius);
+    }
+}

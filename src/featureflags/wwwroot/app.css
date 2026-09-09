@@ -20,6 +20,27 @@ a, .btn-link {
     padding-top: 1.1rem;
 }
 
+.alert {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 991.98px) {
+    .app-header .btn,
+    .app-header .navbar-toggler,
+    .content .btn,
+    .app-header .dropdown-item {
+        min-height: 44px;
+        min-width: 44px;
+        align-content: center;
+    }
+
+    .content .form-control,
+    .content .form-select {
+        min-height: 44px;
+        font-size: 1rem;
+    }
+}
+
 h1:focus {
     outline: none;
 }

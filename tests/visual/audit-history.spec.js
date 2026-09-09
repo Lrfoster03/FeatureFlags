@@ -9,6 +9,11 @@ async function snapshotHistory(page, name, testInfo) {
   await page.locator('.user-email, .history-description > strong:first-child').evaluateAll(elements => {
     elements.forEach(element => { element.textContent = 'audit@example.com'; });
   });
+  await page.locator('.project-switcher button, .project-switcher .dropdown-item, .history-heading .small, .history-action > strong').evaluateAll(elements => {
+    elements.forEach(element => {
+      if (element.textContent.startsWith('Audit test project ')) element.textContent = 'Audit test project';
+    });
+  });
   await page.locator('dialog[open] time[data-audit-time]').evaluateAll(elements => {
     elements.forEach(element => { element.dateTime = '2026-07-01T19:00:00.000Z'; });
   });
@@ -23,9 +28,10 @@ async function snapshotHistory(page, name, testInfo) {
 test('project history shows saved diffs, preserves drafts, and stays within the selected project', async ({ page }, testInfo) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  const email = `audit-${randomUUID()}@example.com`;
-  const projectName = 'Audit test project';
-  const otherProjectName = 'Separate project';
+  const testId = randomUUID();
+  const email = `audit-${testId}@example.com`;
+  const projectName = `Audit test project ${testId}`;
+  const otherProjectName = `Separate project ${testId}`;
   await page.goto('/Identity/Account/Register');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password', { exact: true }).fill('AuditTest1!');
@@ -129,6 +135,7 @@ test('project history shows saved diffs, preserves drafts, and stays within the 
   expect(await modal.locator('.history-scroll').evaluate(element => element.scrollTop)).toBeGreaterThan(0);
   await expect(close).toBeInViewport();
   await close.click();
+  await page.getByRole('button', { name: 'Toggle navigation' }).click();
   await history.click();
   await modal.locator('.history-row').first().click();
   await modal.getByRole('button', { name: 'Before / after', exact: true }).click();
