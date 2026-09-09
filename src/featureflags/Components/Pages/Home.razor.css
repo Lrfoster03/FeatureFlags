@@ -1,0 +1,27 @@
+.has-unsaved-changes {
+    padding-bottom: 10rem;
+}
+
+.save-bar,
+.dashboard-error {
+    position: fixed;
+    right: 1rem;
+    bottom: max(1rem, env(safe-area-inset-bottom));
+    z-index: 1030;
+    width: min(32rem, calc(100% - 2rem));
+}
+
+.save-bar ::deep .alert {
+    margin-bottom: 0;
+}
+
+.dashboard-error {
+    bottom: 10rem;
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 575.98px) {
+    h1 {
+        font-size: 1.5rem;
+    }
+}

@@ -10,19 +10,15 @@
 @inject NavigationManager Navigation
 
 <div class="page">
-    @* <div class="sidebar">
-        <NavMenu />
-    </div> *@
-
     <main>
-        <div class="top-row app-header">
+        <nav class="app-header navbar navbar-expand-lg" aria-label="Main navigation">
             <div class="app-header-left">
                 <a class="btn btn-outline-secondary btn-sm" href="/projects">Home</a>
                 @if (availableProjects.Count > 0)
                 {
                     <div class="dropdown project-switcher">
                         <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
-                                data-bs-toggle="dropdown" aria-expanded="false">
+                                data-bs-toggle="dropdown" aria-expanded="false" aria-label="Switch project" title="@CurrentProjectName">
                             @CurrentProjectName
                         </button>
                         <ul class="dropdown-menu">
@@ -40,6 +36,12 @@
                 }
             </div>
 
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#app-navigation"
+                    aria-controls="app-navigation" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon" aria-hidden="true"></span>
+            </button>
+
+            <div class="collapse navbar-collapse" id="app-navigation">
             <AuthorizeView>
                 <Authorized>
                     <div class="app-header-right">
@@ -48,11 +50,11 @@
                         {
                             <ProjectHistory ProjectId="@CurrentProjectId" @rendermode="InteractiveServer" @key="CurrentProjectId" />
                         }
+                        <a class="btn btn-outline-secondary btn-sm" href="@SettingsHref">Settings</a>
                         <form method="post" action="/Identity/Account/Logout" class="d-inline">
                             <AntiforgeryToken />
                             <button type="submit" class="btn btn-outline-secondary btn-sm">Logout</button>
                         </form>
-                        <a class="btn btn-outline-secondary btn-sm" href="@SettingsHref">Settings</a>
                     </div>
                 </Authorized>
                 <NotAuthorized>
@@ -62,10 +64,11 @@
                     </div>
                 </NotAuthorized>
             </AuthorizeView>
-        </div>
+            </div>
+        </nav>
 
 
-        <article class="content px-4">
+        <article class="content">
             @Body
         </article>
     </main>

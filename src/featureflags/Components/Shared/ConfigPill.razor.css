@@ -77,3 +77,28 @@
 .json-editor textarea {
     min-width: 0;
 }
+
+.editor-tools-menu {
+    min-width: 8rem;
+}
+
+.editor-tools-menu .btn {
+    border-radius: 0;
+}
+
+@media (min-width: 576px) {
+    .editor-tools-toggle {
+        display: none;
+    }
+
+    .editor-tools-menu {
+        display: flex;
+        position: static !important;
+        transform: none !important;
+        min-width: 0;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        overflow: hidden;
+    }
+}
