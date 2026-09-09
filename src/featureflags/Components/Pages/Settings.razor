@@ -58,28 +58,27 @@
 <div class="card p-3 mb-4">
     <h4>Members</h4>
 
-    <table class="table">
+    <table class="table settings-table" aria-label="Project members">
         <thead>
             <tr>
-                <th>Email</th>
-                <th>Display Name</th>
-                <th>User Id</th>
-                <th>Role</th>
-                <th>Actions</th>
+                <th scope="col">Email</th>
+                <th scope="col">Display Name</th>
+                <th scope="col">User Id</th>
+                <th scope="col">Role</th>
+                <th scope="col">Actions</th>
             </tr>
         </thead>
         <tbody>
             @foreach (var member in members)
             {
                 <tr>
-                    <td>@member.Email</td>
-                    <td>@(string.IsNullOrWhiteSpace(member.DisplayName) ? "—" : member.DisplayName)</td>
-                    <td><code>@member.UserId</code></td>
-                    <td>@member.Role</td>
-                    <td>
+                    <td data-label="Email">@member.Email</td>
+                    <td data-label="Display Name">@(string.IsNullOrWhiteSpace(member.DisplayName) ? "—" : member.DisplayName)</td>
+                    <td data-label="User Id"><code>@member.UserId</code></td>
+                    <td data-label="Role">
                         @if (member.RevokedAt is null)
                         {
-                            <select class="form-select form-select-sm" value="@member.Role"
+                            <select class="form-select form-select-sm" value="@member.Role" aria-label="@($"Role for {member.Email}")"
                                     disabled="@(!canManageMembers)" @onchange="e => UpdateMemberRole(member, e)">
                                 <option value="@ProjectRole.Viewer">Viewer</option>
                                 <option value="@ProjectRole.Editor">Editor</option>
@@ -87,9 +86,13 @@
                                 <option value="@ProjectRole.Owner">Owner</option>
                             </select>
                         }
+                        else
+                        {
+                            @member.Role
+                        }
                     </td>
 
-                    <td>
+                    <td data-label="Actions">
                         @if (member.RevokedAt is null)
                         {
                             <button class="btn btn-outline-danger btn-sm" disabled="@(!canManageMembers)" @onclick="() => RevokeMember(member)">
@@ -132,25 +135,25 @@
         </div>
     }
 
-    <table class="table">
+    <table class="table settings-table" aria-label="API keys">
         <thead>
             <tr>
-                <th>Key Name</th>
-                <th>Key</th>
-                <th>Created At</th>
-                <th>Status</th>
-                <th>Actions</th>
+                <th scope="col">Key Name</th>
+                <th scope="col">Key</th>
+                <th scope="col">Created At</th>
+                <th scope="col">Status</th>
+                <th scope="col">Actions</th>
             </tr>
         </thead>
         <tbody>
             @foreach (var key in keys)
             {
                 <tr>
-                    <td>@key.Name</td>
-                    <td><code>@key.Key</code></td>
-                    <td>@key.CreatedAt</td>
-                    <td>@(key.RevokedAt.HasValue ? key.RevokedAt.Value.ToString() : "Active")</td>
-                    <td>
+                    <td data-label="Key Name">@key.Name</td>
+                    <td data-label="Key"><code>@key.Key</code></td>
+                    <td data-label="Created At">@key.CreatedAt</td>
+                    <td data-label="Status">@(key.RevokedAt.HasValue ? key.RevokedAt.Value.ToString() : "Active")</td>
+                    <td data-label="Actions">
                         @if (key.RevokedAt is null)
                         {
                             <button class="btn btn-outline-danger btn-sm" disabled="@(!canManageKeys)" @onclick="() => RevokeKey(key)">

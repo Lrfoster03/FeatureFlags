@@ -24,11 +24,11 @@
 
 
 <fieldset disabled="@isSaving" class="border-0 p-0 m-0">
-<div style="overflow-y: scroll;">
+<div class="dashboard @(HasUnsavedChanges ? "has-unsaved-changes" : null)">
     <section class="mb-4">
-        <div class="d-flex align-items-center justify-content-between px-2">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-2">
             <h1 style="margin: 0;">Feature Flags</h1>
-            <div class="gap-2">
+            <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-secondary">@featureFlags.Count</span>
                 <button class="btn btn-primary" @onclick="AddFlag">Add Flag</button>
             </div>
@@ -52,9 +52,9 @@
     </section>
 
     <section>
-        <div class="d-flex align-items-center justify-content-between px-2">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 px-2">
             <h1 style="margin: 0;">Configs</h1>
-            <div class="gap-2">
+            <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-secondary">@featureConfigs.Count</span>
                 <button class="btn btn-primary" @onclick="AddConfig">Add Config</button>
             </div>
@@ -79,9 +79,9 @@
 
     @if (HasUnsavedChanges)
     {
-        <div style="position: fixed; bottom: 1rem; right: 1rem; z-index: 2000; min-width: 360px;">
+        <div class="save-bar" role="status">
             <Alert Color="AlertColor.Warning">
-                <div class="d-flex align-items-center justify-content-between gap-3">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <span>You have unsaved changes.</span>
                     <div class="d-flex gap-2">
                         <Button Color="ButtonColor.Success" Size="ButtonSize.Small" @onclick="SaveAllChanges">
@@ -101,7 +101,7 @@
 
 @if (!string.IsNullOrWhiteSpace(errorMessage))
 {
-    <div style="position: fixed; bottom: 5rem; right: 1rem; z-index: 2001; min-width: 320px;">
+    <div class="dashboard-error" role="alert">
         <Alert Color="AlertColor.Danger" Dismissable="true">
             @errorMessage
         </Alert>

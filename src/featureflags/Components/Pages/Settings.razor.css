@@ -1,0 +1,46 @@
+.settings-table {
+    table-layout: fixed;
+}
+
+.settings-table td {
+    overflow-wrap: anywhere;
+    vertical-align: middle;
+}
+
+@media (max-width: 767.98px) {
+    .settings-table thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .settings-table,
+    .settings-table tbody,
+    .settings-table tr,
+    .settings-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .settings-table tr {
+        padding: 0.75rem 0;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+
+    .settings-table td {
+        padding: 0.5rem 0;
+        border: 0;
+    }
+
+    .settings-table td::before {
+        content: attr(data-label);
+        display: block;
+        margin-bottom: 0.25rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--bs-secondary-color);
+    }
+}

@@ -33,13 +33,17 @@
             <div class="mb-3">
                 <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
                     <label class="form-label text-white mb-0">JSON Schema</label>
-                    <div class="btn-group btn-group-sm" @onclick:stopPropagation="true">
-                        <button type="button" class="btn btn-light schema-format-button"
+                    <div class="dropdown editor-tools" @onclick:stopPropagation="true">
+                        <button type="button" class="btn btn-light btn-sm dropdown-toggle editor-tools-toggle"
+                                data-bs-toggle="dropdown" aria-expanded="false" aria-label="JSON schema tools">Tools</button>
+                        <div class="dropdown-menu dropdown-menu-end editor-tools-menu">
+                        <button type="button" class="btn btn-light btn-sm dropdown-item schema-format-button"
                                 @onclick="FormatSchemaEditor">Format</button>
-                        <button type="button" class="btn btn-light schema-minify-button"
+                        <button type="button" class="btn btn-light btn-sm dropdown-item schema-minify-button"
                                 @onclick="MinifySchemaEditor">Minify</button>
-                        <button type="button" class="btn btn-light schema-reset-button"
+                        <button type="button" class="btn btn-light btn-sm dropdown-item schema-reset-button"
                                 @onclick="ResetSchemaEditor">Reset</button>
+                        </div>
                     </div>
                 </div>
                 <div class="json-editor @(schemaError is null ? null : "is-invalid")" @onclick:stopPropagation="true">
@@ -59,13 +63,17 @@
             <div class="mb-3">
                 <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
                     <label class="form-label text-white mb-0">JSON Value</label>
-                    <div class="btn-group btn-group-sm" @onclick:stopPropagation="true">
-                        <button type="button" class="btn btn-light value-format-button"
+                    <div class="dropdown editor-tools" @onclick:stopPropagation="true">
+                        <button type="button" class="btn btn-light btn-sm dropdown-toggle editor-tools-toggle"
+                                data-bs-toggle="dropdown" aria-expanded="false" aria-label="JSON value tools">Tools</button>
+                        <div class="dropdown-menu dropdown-menu-end editor-tools-menu">
+                        <button type="button" class="btn btn-light btn-sm dropdown-item value-format-button"
                                 @onclick="FormatValueEditor">Format</button>
-                        <button type="button" class="btn btn-light value-minify-button"
+                        <button type="button" class="btn btn-light btn-sm dropdown-item value-minify-button"
                                 @onclick="MinifyValueEditor">Minify</button>
-                        <button type="button" class="btn btn-light value-reset-button"
+                        <button type="button" class="btn btn-light btn-sm dropdown-item value-reset-button"
                                 @onclick="ResetValueEditor">Reset</button>
+                        </div>
                     </div>
                 </div>
                 <div class="json-editor @(valueError is null ? null : "is-invalid")" @onclick:stopPropagation="true">
