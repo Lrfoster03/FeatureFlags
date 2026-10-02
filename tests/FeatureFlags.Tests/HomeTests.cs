@@ -35,7 +35,7 @@ public class HomeTests : BunitContext
             return database.CreateContext();
         }));
         var auth = AddAuthenticatedUser();
-        Services.AddSingleton(new ProjectChanges(new TestContextFactory(database.CreateContext), new UnusedIdentityFactory(), auth));
+        Services.AddSingleton(new ProjectChanges(new TestContextFactory(database.CreateContext), auth));
         var cut = RenderHome(database);
 
         failNextRefresh = true;
