@@ -39,17 +39,17 @@ public class HomeTests : BunitContext
         var cut = RenderHome(database);
 
         failNextRefresh = true;
-        cut.FindAll("button").Single(b => b.TextContent.Trim() == button).Click();
+        cut.Find($"button[aria-label='{button}']").Click();
         cut.WaitForAssertion(() => Assert.Contains("Failed to save changes.", cut.Markup));
         using var db = database.CreateContext();
         var audit = await db.AuditEvents.SingleAsync();
 
-        cut.FindAll("button").Single(b => b.TextContent.Trim() == button).Click();
+        cut.Find($"button[aria-label='{button}']").Click();
         cut.WaitForAssertion(() => Assert.DoesNotContain("Failed to save changes.", cut.Markup));
         Assert.Equal(1, await db.FeatureFlags.CountAsync() + await db.Configs.CountAsync());
         Assert.Equal(audit.Id, (await db.AuditEvents.SingleAsync()).Id);
 
-        cut.FindAll("button").Single(b => b.TextContent.Trim() == button).Click();
+        cut.Find($"button[aria-label='{button}']").Click();
         Assert.Equal(2, await db.FeatureFlags.CountAsync() + await db.Configs.CountAsync());
     }
 
@@ -66,7 +66,7 @@ public class HomeTests : BunitContext
         var pill = cut.FindComponent<FlagPill>();
         var draft = pill.Instance.FeatureFlag; draft.PercentageRollout = 75;
         await cut.InvokeAsync(() => pill.Instance.OnChanged.InvokeAsync(draft));
-        cut.FindAll("button").Single(b => b.TextContent.Trim() == "Add Flag").Click();
+        cut.Find("button[aria-label='Add Flag']").Click();
         using var db = database.CreateContext();
         Assert.Equal(10, db.FeatureFlags.Single(f => f.Id == 1).PercentageRollout);
         Assert.Equal(75, cut.FindComponents<FlagPill>().Single(p => p.Instance.FeatureFlag.Id == 1).Instance.FeatureFlag.PercentageRollout);

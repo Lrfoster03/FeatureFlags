@@ -30,7 +30,7 @@
             <h1 style="margin: 0;">Feature Flags</h1>
             <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-secondary">@featureFlags.Count</span>
-                <button class="btn btn-primary" @onclick="AddFlag">Add Flag</button>
+                <button class="btn btn-primary" aria-label="Add Flag" title="Add Flag" @onclick="AddFlag">+</button>
             </div>
         </div>
 
@@ -56,7 +56,7 @@
             <h1 style="margin: 0;">Configs</h1>
             <div class="d-flex align-items-center gap-2">
                 <span class="badge bg-secondary">@featureConfigs.Count</span>
-                <button class="btn btn-primary" @onclick="AddConfig">Add Config</button>
+                <button class="btn btn-primary" aria-label="Add Config" title="Add Config" @onclick="AddConfig">+</button>
             </div>
         </div>
 

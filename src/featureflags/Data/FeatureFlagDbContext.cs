@@ -19,6 +19,7 @@ public class FeatureFlagDbContext : DbContext
     public DbSet<ProjectMember> ProjectMembers => Set<ProjectMember>();
     public DbSet<ProjectEnvironment> ProjectEnvironments => Set<ProjectEnvironment>();
     public DbSet<ClientKey> ClientKeys => Set<ClientKey>();
+    public DbSet<ProjectInvitation> ProjectInvitations => Set<ProjectInvitation>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     private void AdvanceRevisions()
@@ -78,8 +79,14 @@ public class FeatureFlagDbContext : DbContext
         audit.HasIndex(e => new { e.OperationId, e.EntityType, e.EntityId }).IsUnique();
 
         foreach (var type in new[] { typeof(Project), typeof(ProjectEnvironment), typeof(ProjectMember),
-                     typeof(FeatureFlag), typeof(FeatureConfig), typeof(ClientKey) })
+                     typeof(FeatureFlag), typeof(FeatureConfig), typeof(ClientKey), typeof(ProjectInvitation) })
             modelBuilder.Entity(type).Property<int>("Revision").IsConcurrencyToken();
+
+        var invitation = modelBuilder.Entity<ProjectInvitation>();
+        invitation.HasIndex(i => i.TokenHash).IsUnique();
+        invitation.HasIndex(i => new { i.ProjectId, i.NormalizedEmail }).IsUnique()
+            .HasFilter("\"AcceptedAt\" IS NULL AND \"RevokedAt\" IS NULL");
+        invitation.HasOne(i => i.Project).WithMany().HasForeignKey(i => i.ProjectId);
 
         modelBuilder.Entity<Project>()
             .HasIndex(p => p.Name)
