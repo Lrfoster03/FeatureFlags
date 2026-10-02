@@ -9,6 +9,9 @@ using Microsoft.OpenApi;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
+using System.Net;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,9 +54,29 @@ builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
 builder.Services.AddCascadingAuthenticationState();
 
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    foreach (var address in builder.Configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [])
+        options.KnownProxies.Add(IPAddress.Parse(address));
+});
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (context, _) =>
+    {
+        // Do not re-execute a rejected POST on the not-found page and replace 429 with an antiforgery error.
+        if (context.HttpContext.Features.Get<IStatusCodePagesFeature>() is { } pages) pages.Enabled = false;
+        return ValueTask.CompletedTask;
+    };
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        (context.Request.Path.StartsWithSegments("/invitations") ||
+             context.Request.Path.StartsWithSegments("/Identity/Account/Register"))
+            ? RateLimitPartition.GetFixedWindowLimiter("invitation:" + context.Connection.RemoteIpAddress,
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 })
+            : RateLimitPartition.GetNoLimiter("other"));
 
     options.AddPolicy("api-key", httpContext =>
     {
@@ -234,6 +257,18 @@ builder.Services.AddOpenApi(options =>
 });
 
 var app = builder.Build();
+app.UseForwardedHeaders();
+
+app.Use(async (context, next) =>
+{
+    if ((context.Request.Path.StartsWithSegments("/invitations") ||
+             context.Request.Path.StartsWithSegments("/Identity/Account/Register")) || context.Request.Query.ContainsKey("invitationToken"))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    }
+    await next();
+});
 
 
 app.MapOpenApi("/openapi/v1.json");
@@ -248,9 +283,10 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
-app.UseAntiforgery();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
+app.UseAntiforgery();
 
 app.MapStaticAssets();
 
@@ -259,7 +295,6 @@ app.MapRazorComponents<App>()
 
 app.MapRazorPages();
 
-app.UseRateLimiter();
 
 app.MapGet("/healthz", () => Results.Ok(new { status = "healthy" }));
 
