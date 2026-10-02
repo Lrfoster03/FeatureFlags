@@ -9,7 +9,7 @@ namespace FeatureFlags.Areas.Identity.Pages.Account;
 
 public class RegisterModel(
     UserManager<ApplicationUser> userManager,
-    SignInManager<ApplicationUser> signInManager, ProjectInvitations invitations) : PageModel
+    SignInManager<ApplicationUser> signInManager, ProjectInvitations invitations, ILogger<RegisterModel> logger) : PageModel
 {
     private readonly UserManager<ApplicationUser> _userManager = userManager;
     private readonly SignInManager<ApplicationUser> _signInManager = signInManager;
@@ -20,8 +20,10 @@ public class RegisterModel(
     public async Task OnGetAsync(string? invitationToken = null)
     {
         if (string.IsNullOrEmpty(invitationToken)) return;
-        try { Input.Email = (await invitations.PreviewAsync(invitationToken)).Email; }
+        try { Input.Email = (await invitations.PreviewAsync(invitationToken, HttpContext.RequestAborted)).Email; }
         catch (ArgumentException ex) { ModelState.AddModelError(string.Empty, ex.Message); }
+        catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { }
+        catch (Exception ex) { InvitationDiagnostics.LogUnexpected(logger, "registration preview", ex); ModelState.AddModelError(string.Empty, "Unable to load the invitation. Please try again."); }
     }
 
     public async Task<IActionResult> OnPostAsync(string? returnUrl = null, string? invitationToken = null)
@@ -33,7 +35,7 @@ public class RegisterModel(
         {
             try
             {
-                var invitation = await invitations.PreviewAsync(invitationToken);
+                var invitation = await invitations.PreviewAsync(invitationToken, HttpContext.RequestAborted);
                 if (ProjectInvitations.NormalizeEmail(Input.Email) != ProjectInvitations.NormalizeEmail(invitation.Email))
                 {
                     ModelState.AddModelError("Input.Email", "Use the email address this invitation was sent to.");
@@ -41,6 +43,8 @@ public class RegisterModel(
                 }
             }
             catch (ArgumentException ex) { ModelState.AddModelError(string.Empty, ex.Message); return Page(); }
+            catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested) { return new EmptyResult(); }
+            catch (Exception ex) { InvitationDiagnostics.LogUnexpected(logger, "registration preview", ex); ModelState.AddModelError(string.Empty, "Unable to load the invitation. Please try again."); return Page(); }
         }
 
         var user = new ApplicationUser { UserName = Input.Email, Email = Input.Email };

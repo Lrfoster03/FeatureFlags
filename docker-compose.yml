@@ -7,8 +7,13 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      ReverseProxy__KnownProxies__0: ${CADDY_PROXY_IP:-172.30.88.2}
       ConnectionStrings__FeatureFlags: Host=postgres;Port=5432;Database=featureflags;Username=featureflags;Password=${POSTGRES_PASSWORD}
       ConnectionStrings__Application: Host=postgres;Port=5432;Database=featureflags;Username=featureflags;Password=${POSTGRES_PASSWORD}
+    networks:
+      default:
+      proxy:
+        ipv4_address: ${APP_PROXY_IP:-172.30.88.3}
     expose:
       - "8080"
     volumes:
@@ -29,6 +34,9 @@ services:
     restart: unless-stopped
     depends_on:
       - featureflags
+    networks:
+      proxy:
+        ipv4_address: ${CADDY_PROXY_IP:-172.30.88.2}
     ports:
       - "80:80"
       - "443:443"
@@ -42,3 +50,9 @@ volumes:
   caddy-data:
   caddy-config:
   dataprotection-keys:
+
+networks:
+  proxy:
+    ipam:
+      config:
+        - subnet: ${PROXY_SUBNET:-172.30.88.0/24}

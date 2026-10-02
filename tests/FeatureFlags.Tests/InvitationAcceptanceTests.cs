@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace FeatureFlags.Tests;
 
@@ -50,6 +51,41 @@ public class InvitationAcceptanceTests : BunitContext
         Assert.Equal(2, await db.ProjectMembers.CountAsync());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unexpected_database_errors_are_logged_safely_and_not_reported_as_conflicts(bool conflict)
+    {
+        await using var f = await InvitationFixture.CreateAsync();
+        await f.AddUser("recipient", "recipient@example.com");
+        var issued = await f.As("owner").CreateAsync(f.ProjectId, "recipient@example.com", FeatureFlags.Components.Models.ProjectRole.Viewer, Guid.NewGuid());
+        Configure(f, InvitationFixture.Auth("recipient"));
+        Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(new TestContextFactory(() => new FailingAcceptanceContext(f.Options, conflict)));
+        var logger = new CapturedLogger<AcceptInvitation>();
+        Services.AddSingleton<ILogger<AcceptInvitation>>(logger);
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/invitations/accept?token=" + issued.Token);
+        var cut = Render<AcceptInvitation>();
+        cut.WaitForAssertion(() => Assert.Equal("Join project", cut.Find("button").TextContent));
+        cut.Find("button").Click();
+        cut.WaitForAssertion(() => Assert.Contains(conflict ? "The invitation changed." : "Unable to join the project.", cut.Markup));
+        if (conflict) Assert.Empty(logger.Entries);
+        else
+        {
+            var entry = Assert.Single(logger.Entries);
+            Assert.Null(entry.Exception);
+            Assert.Contains(nameof(DbUpdateException), entry.Message);
+            Assert.DoesNotContain("secret-payload", entry.Message);
+            Assert.DoesNotContain(issued.Token!, entry.Message);
+        }
+        Assert.DoesNotContain("secret-payload", cut.Markup);
+    }
+
+    private sealed class FailingAcceptanceContext(DbContextOptions<FeatureFlagDbContext> options, bool conflict) : FeatureFlagDbContext(options)
+    {
+        public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+            => throw (conflict ? new DbUpdateConcurrencyException("secret-payload") : new DbUpdateException("secret-payload"));
+    }
+
     private void Configure(InvitationFixture f, AuthenticationStateProvider auth)
     {
         Services.AddSingleton<IDbContextFactory<FeatureFlagDbContext>>(f.Factory);
@@ -64,4 +100,13 @@ public class InvitationAcceptanceTests : BunitContext
     {
         public override Task<AuthenticationState> GetAuthenticationStateAsync() => Task.FromResult(new AuthenticationState(new ClaimsPrincipal(new ClaimsIdentity())));
     }
+}
+
+internal sealed class CapturedLogger<T> : ILogger<T>
+{
+    public List<(string Message, Exception? Exception)> Entries { get; } = [];
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(LogLevel logLevel) => true;
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        => Entries.Add((formatter(state, exception), exception));
 }

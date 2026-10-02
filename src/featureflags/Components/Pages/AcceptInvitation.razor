@@ -1,4 +1,5 @@
 @page "/invitations/accept"
+@implements IDisposable
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using FeatureFlags.Data
@@ -6,6 +7,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @inject ProjectInvitations Invitations
+@inject ILogger<AcceptInvitation> Logger
 @inject IDbContextFactory<ApplicationDbContext> IdentityFactory
 @inject AuthenticationStateProvider Authentication
 @inject NavigationManager Navigation
@@ -59,6 +61,8 @@
     private string? error;
     private string? currentEmail;
     private bool signedIn, emailMatches, hasAccount, saving;
+    private readonly CancellationTokenSource lifetime = new();
+    public void Dispose() { lifetime.Cancel(); lifetime.Dispose(); }
     private readonly Guid operationId = Guid.NewGuid();
     private string InvitationPath => "/invitations/accept?token=" + Uri.EscapeDataString(Token ?? "");
     private string AuthUrl(string page) => $"/Identity/Account/{page}?returnUrl={Uri.EscapeDataString(InvitationPath)}&invitationToken={Uri.EscapeDataString(Token ?? "")}";
@@ -68,18 +72,19 @@
         invitation = null; error = null;
         try
         {
-            invitation = await Invitations.PreviewAsync(Token ?? "");
+            invitation = await Invitations.PreviewAsync(Token ?? "", lifetime.Token);
             var principal = (await Authentication.GetAuthenticationStateAsync()).User;
             signedIn = principal.Identity?.IsAuthenticated == true;
-            await using var identity = await IdentityFactory.CreateDbContextAsync();
+            await using var identity = await IdentityFactory.CreateDbContextAsync(lifetime.Token);
             var normalized = ProjectInvitations.NormalizeEmail(invitation.Email);
-            hasAccount = await identity.Users.AnyAsync(u => u.NormalizedEmail == normalized);
+            hasAccount = await identity.Users.AnyAsync(u => u.NormalizedEmail == normalized, lifetime.Token);
             var id = principal.FindFirstValue(ClaimTypes.NameIdentifier);
-            currentEmail = signedIn ? await identity.Users.Where(u => u.Id == id).Select(u => u.Email).SingleOrDefaultAsync() : null;
+            currentEmail = signedIn ? await identity.Users.Where(u => u.Id == id).Select(u => u.Email).SingleOrDefaultAsync(lifetime.Token) : null;
             emailMatches = currentEmail is not null && ProjectInvitations.NormalizeEmail(currentEmail) == normalized;
         }
         catch (ArgumentException ex) { error = ex.Message; }
-        catch (Exception) { error = "Unable to load this invitation. Please try again."; invitation = null; }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { InvitationDiagnostics.LogUnexpected(Logger, "preview", ex); error = "Unable to load this invitation. Please try again."; invitation = null; }
     }
 
     private async Task JoinAsync()
@@ -88,13 +93,14 @@
         saving = true; error = null;
         try
         {
-            var projectId = await Invitations.AcceptAsync(Token ?? "", operationId);
+            var projectId = await Invitations.AcceptAsync(Token ?? "", operationId, lifetime.Token);
             Navigation.NavigateTo($"/projects/{Uri.EscapeDataString(projectId)}/home", forceLoad: true);
         }
         catch (ArgumentException ex) { error = ex.Message; }
         catch (UnauthorizedAccessException ex) { error = ex.Message; }
-        catch (DbUpdateException) { error = "The invitation changed. Refresh this page and try again."; }
-        catch (Exception) { error = "Unable to join the project. Please try again."; }
+        catch (DbUpdateConcurrencyException) { error = "The invitation changed. Refresh this page and try again."; }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (Exception ex) { InvitationDiagnostics.LogUnexpected(Logger, "accept", ex); error = "Unable to join the project. Please try again."; }
         finally { saving = false; }
     }
 }

@@ -201,3 +201,16 @@ Feel free to fork the repo and submit PRs!
 MIT License
 
 ---
+
+### Trusted reverse proxy
+
+Forwarded client IPs and HTTPS scheme are accepted only from loopback or addresses
+listed in `ReverseProxy__KnownProxies__0` (then `__1`, etc.). The supplied Compose
+configuration gives Caddy a fixed address on a dedicated proxy network and trusts
+only that address. Override `PROXY_SUBNET`, `CADDY_PROXY_IP`, and `APP_PROXY_IP`
+together if the default subnet conflicts with your deployment. Do not trust
+arbitrary forwarded headers or configure all networks as trusted.
+
+Invitation pages and registration (including invitation previews on GET and POST)
+share a 30-request-per-minute bucket per client IP. Forwarded headers are processed
+before rate limiting, so clients behind the trusted Caddy proxy have separate buckets.
