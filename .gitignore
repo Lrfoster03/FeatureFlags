@@ -67,4 +67,4 @@ test-results/
 *.env*
 
 # Local invitation emails contain single-use links
-App_Data/invitation-mail/
+**/App_Data/invitation-mail/

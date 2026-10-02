@@ -19,22 +19,47 @@ public sealed class InvitationEmailOptions
     public string? PickupDirectory { get; set; }
 }
 
-public sealed class InvitationEmail(IOptions<InvitationEmailOptions> options, IWebHostEnvironment environment)
+public sealed class InvitationEmail(IOptions<InvitationEmailOptions> options, IWebHostEnvironment environment,
+    Func<ISmtpClient>? createClient = null)
 {
     public bool UsesLocalPreview => environment.IsDevelopment() && !string.IsNullOrWhiteSpace(options.Value.PickupDirectory);
 
-    public async Task SendAsync(IssuedInvitation issued)
+    public void EnsureReady()
     {
+        var settings = options.Value;
+        if (!Uri.TryCreate(settings.PublicBaseUrl, UriKind.Absolute, out var uri) ||
+            !(uri.Scheme == Uri.UriSchemeHttps || environment.IsDevelopment() && uri.Scheme == Uri.UriSchemeHttp && uri.IsLoopback) ||
+            uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0)
+            Invalid("Configure the application's public HTTPS URL.");
+        if (!MailboxAddress.TryParse(settings.From, out var sender) || !sender.Address.Contains('@'))
+            Invalid("Configure a valid sender email address.");
+        if (!environment.IsDevelopment() && !string.IsNullOrEmpty(settings.PickupDirectory))
+            Invalid("Local email preview is available only in Development.");
+        if (UsesLocalPreview)
+        {
+            try { _ = Path.GetFullPath(settings.PickupDirectory!, environment.ContentRootPath); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            { Invalid("Configure a valid local preview directory."); }
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(settings.Host) || settings.Port is < 1 or > 65535 ||
+            settings.Security is not (SecureSocketOptions.StartTls or SecureSocketOptions.SslOnConnect))
+            Invalid("Configure SMTP host, port and required TLS.");
+        if (!string.IsNullOrWhiteSpace(settings.Username) && string.IsNullOrEmpty(settings.Password))
+            Invalid("Configure the SMTP password.");
+    }
+
+    private static void Invalid(string message) => throw new OptionsValidationException(
+        nameof(InvitationEmailOptions), typeof(InvitationEmailOptions), [message]);
+
+    public async Task SendAsync(IssuedInvitation issued, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureReady();
         if (issued.Token is null)
             throw new ArgumentException("The invitation was already saved. Use Resend to send a new email link.");
         var settings = options.Value;
-        if (!Uri.TryCreate(settings.PublicBaseUrl, UriKind.Absolute, out var baseUri) ||
-            !(baseUri.Scheme == Uri.UriSchemeHttps || environment.IsDevelopment() && baseUri.Scheme == Uri.UriSchemeHttp && baseUri.IsLoopback) ||
-            baseUri.UserInfo.Length > 0 || baseUri.Query.Length > 0 || baseUri.Fragment.Length > 0)
-            throw new InvalidOperationException("Configure InvitationEmail:PublicBaseUrl with the application's public HTTPS URL.");
-        if (!environment.IsDevelopment() && !string.IsNullOrEmpty(settings.PickupDirectory))
-            throw new InvalidOperationException("Local email preview is available only in Development.");
-
+        var baseUri = new Uri(settings.PublicBaseUrl);
         var invitation = issued.Invitation;
         var link = new Uri(baseUri, "/invitations/accept?token=" + Uri.EscapeDataString(issued.Token)).AbsoluteUri;
         using var message = new MimeMessage();
@@ -56,17 +81,16 @@ public sealed class InvitationEmail(IOptions<InvitationEmailOptions> options, IW
             var fileOptions = new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write, Share = FileShare.None };
             if (!OperatingSystem.IsWindows()) fileOptions.UnixCreateMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
             await using var file = new FileStream(path, fileOptions);
-            await message.WriteToAsync(file);
+            await message.WriteToAsync(file, cancellationToken);
             return;
         }
-        if (string.IsNullOrWhiteSpace(settings.Host) || settings.Port is < 1 or > 65535 ||
-            settings.Security is not (SecureSocketOptions.StartTls or SecureSocketOptions.SslOnConnect))
-            throw new InvalidOperationException("Configure SMTP host, port and required TLS before sending invitations.");
-        using var smtp = new SmtpClient { Timeout = 15000 };
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await smtp.ConnectAsync(settings.Host, settings.Port, settings.Security, timeout.Token);
+        using var smtp = createClient?.Invoke() ?? new SmtpClient();
+        smtp.Timeout = 15000;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        await smtp.ConnectAsync(settings.Host!, settings.Port, settings.Security, timeout.Token);
         if (!string.IsNullOrWhiteSpace(settings.Username))
-            await smtp.AuthenticateAsync(settings.Username, settings.Password ?? throw new InvalidOperationException("Configure the SMTP password."), timeout.Token);
+            await smtp.AuthenticateAsync(settings.Username, settings.Password!, timeout.Token);
         await smtp.SendAsync(message, timeout.Token);
         // The server has accepted the message; a failed QUIT must not report that delivery failed.
         try { await smtp.DisconnectAsync(true, timeout.Token); }
@@ -77,13 +101,20 @@ public sealed class InvitationEmail(IOptions<InvitationEmailOptions> options, IW
 public sealed class InvitationDelivery(ProjectInvitations invitations, InvitationEmail email)
 {
     public string SuccessMessage => email.UsesLocalPreview ? "Invitation email saved for local preview." : "Invitation email sent.";
-    public async Task SendAsync(string projectId, string recipient, ProjectRole role, Guid operationId)
-        => await DeliverAsync(await invitations.CreateAsync(projectId, recipient, role, operationId));
-    public async Task ResendAsync(string projectId, int invitationId, int revision, Guid operationId)
-        => await DeliverAsync(await invitations.RenewAsync(projectId, invitationId, revision, operationId));
+    public async Task SendAsync(string projectId, string recipient, ProjectRole role, Guid operationId, CancellationToken cancellationToken = default)
+    {
+        email.EnsureReady();
+        await DeliverAsync(await invitations.CreateAsync(projectId, recipient, role, operationId, cancellationToken));
+    }
+    public async Task ResendAsync(string projectId, int invitationId, int revision, Guid operationId, CancellationToken cancellationToken = default)
+    {
+        email.EnsureReady();
+        await DeliverAsync(await invitations.RenewAsync(projectId, invitationId, revision, operationId, cancellationToken));
+    }
     private async Task DeliverAsync(IssuedInvitation issued)
     {
-        try { await email.SendAsync(issued); }
+        // The database has committed. Finish the bounded delivery attempt even if the caller leaves.
+        try { await email.SendAsync(issued, CancellationToken.None); }
         catch (ArgumentException) when (issued.Token is null) { throw; }
         catch (Exception ex)
         {

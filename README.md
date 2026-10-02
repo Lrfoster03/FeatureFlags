@@ -244,8 +244,15 @@ Production rejects pickup mode and requires TLS. Configure the sender/domain
 with your email provider. SMTP acceptance does not guarantee inbox delivery;
 provider bounces and spam filtering still apply.
 
-If sending fails, the saved invitation remains visible and can be resent. The
+Mail settings are validated before creating or renewing an invitation; invalid
+configuration does not replace a link or consume quota. If the later delivery
+attempt fails, the saved invitation remains visible and can be resent. The
 application does not store raw invitation tokens, so resend always issues a
 new link. A renewed-link audit event records that change even if email delivery
 subsequently fails. Mail credentials and invitation links must not be committed
 or written to application logs.
+
+Invitation reads honor caller cancellation. Mutations honor it until commit begins;
+commit reconciliation and the bounded email delivery attempt finish after that
+point, so a disconnected caller does not turn a saved invitation into a cancelled
+operation. SMTP acceptance counts as success even if disconnect subsequently fails.
