@@ -14,6 +14,116 @@ namespace FeatureFlags.Tests;
 public class ProjectInvitationTests
 {
     [Fact]
+    public async Task Quota_uses_the_same_clock_as_audit_and_expires_at_the_hour_boundary()
+    {
+        await using var f = await InvitationFixture.CreateAsync();
+        f.Clock.Now = new DateTimeOffset(2040, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var owner = f.As("owner");
+        for (var i = 0; i < 20; i++)
+            await owner.CreateAsync(f.ProjectId, $"person{i}@example.com", ProjectRole.Viewer, Guid.NewGuid());
+        await using var db = f.Factory.CreateDbContext();
+        Assert.All(await db.AuditEvents.ToListAsync(), e => Assert.Equal(f.Clock.Now.UtcDateTime, e.OccurredAtUtc));
+        await Assert.ThrowsAsync<ArgumentException>(() => owner.CreateAsync(f.ProjectId, "extra@example.com", ProjectRole.Viewer, Guid.NewGuid()));
+        f.Clock.Now = f.Clock.Now.AddHours(1);
+        await owner.CreateAsync(f.ProjectId, "extra@example.com", ProjectRole.Viewer, Guid.NewGuid());
+        Assert.Equal(21, await db.ProjectInvitations.CountAsync());
+    }
+
+    [Fact]
+    public async Task Cancelled_reads_and_mutations_do_not_change_membership_or_invitations()
+    {
+        await using var f = await InvitationFixture.CreateAsync();
+        var owner = f.As("owner");
+        var issued = await owner.CreateAsync(f.ProjectId, "recipient@example.com", ProjectRole.Viewer, Guid.NewGuid());
+        var cancelled = new CancellationToken(true);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owner.PreviewAsync(issued.Token!, cancelled));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owner.CreateAsync(f.ProjectId, "other@example.com", ProjectRole.Viewer, Guid.NewGuid(), cancelled));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owner.RenewAsync(f.ProjectId, issued.Invitation.Id, 1, Guid.NewGuid(), cancelled));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owner.RevokeAsync(f.ProjectId, issued.Invitation.Id, 1, Guid.NewGuid(), cancelled));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => owner.AcceptAsync(issued.Token!, Guid.NewGuid(), cancelled));
+        await using var db = f.Factory.CreateDbContext();
+        Assert.Single(await db.ProjectInvitations.ToListAsync());
+        Assert.Single(await db.AuditEvents.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PostgreSql_serializes_create_and_renew_at_the_project_quota(bool renew)
+    {
+        var connectionString = Environment.GetEnvironmentVariable("AUDIT_TEST_POSTGRES");
+        if (string.IsNullOrEmpty(connectionString)) return; // CI provides PostgreSQL.
+        var schema = "quota_test_" + Guid.NewGuid().ToString("N");
+        await using var connection = new Npgsql.NpgsqlConnection(connectionString); await connection.OpenAsync();
+        await using (var create = new Npgsql.NpgsqlCommand($"CREATE SCHEMA {schema}", connection)) await create.ExecuteNonQueryAsync();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            var scoped = connectionString + ";Search Path=" + schema + ";Application Name=" + schema;
+            var options = new DbContextOptionsBuilder<FeatureFlagDbContext>().UseNpgsql(scoped).Options;
+            using var services = new ServiceCollection().Configure<IdentityOptions>(o => o.Stores.MaxLengthForKeys = 128).BuildServiceProvider();
+            var identities = new PostgresIdentities(new DbContextOptionsBuilder<ApplicationDbContext>()
+                .UseApplicationServiceProvider(services).UseNpgsql(scoped).Options);
+            var factory = new TestContextFactory(() => new FeatureFlagDbContext(options));
+            await using var db = factory.CreateDbContext(); await db.Database.MigrateAsync();
+            await using var identity = identities.CreateDbContext(); await identity.Database.MigrateAsync();
+            var project = new Project { Name = "Quota", Members = { new ProjectMember { UserId = "owner", Role = ProjectRole.Owner } } };
+            db.Projects.Add(project); await db.SaveSeedChangesAsync();
+            var clock = new InvitationFixture.TestClock { Now = new DateTimeOffset(2040, 1, 1, 0, 0, 0, TimeSpan.Zero) };
+            var owner = new ProjectInvitations(factory, identities, InvitationFixture.Auth("owner"), clock);
+            IssuedInvitation? existing = null;
+            for (var i = 0; i < 19; i++) existing = await owner.CreateAsync(project.Id, $"person{i}@example.com", ProjectRole.Viewer, Guid.NewGuid());
+            clock.Now = clock.Now.AddMinutes(2);
+            var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var paused = new TestContextFactory(() => new PauseQuotaContext(options, reached, release));
+            var first = new ProjectInvitations(paused, identities, InvitationFixture.Auth("owner"), clock)
+                .CreateAsync(project.Id, "twentieth@example.com", ProjectRole.Viewer, Guid.NewGuid());
+            await reached.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            var second = renew ? owner.RenewAsync(project.Id, existing!.Invitation.Id, 1, Guid.NewGuid())
+                : owner.CreateAsync(project.Id, "twentyfirst@example.com", ProjectRole.Viewer, Guid.NewGuid());
+            try
+            {
+                // Observe the second transaction waiting on the project lock while the first still holds it.
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                while (true)
+                {
+                    await using var waiting = new Npgsql.NpgsqlCommand("SELECT count(*) FROM pg_stat_activity WHERE application_name = @name AND wait_event = 'advisory'", connection);
+                    waiting.Parameters.AddWithValue("name", schema);
+                    if ((long)(await waiting.ExecuteScalarAsync(timeout.Token))! > 0) break;
+                    Assert.False(second.IsCompleted, "The second invitation escaped the project quota lock.");
+                    await Task.Delay(20, timeout.Token);
+                }
+            }
+            finally { release.TrySetResult(); }
+            await first;
+            await Assert.ThrowsAsync<ArgumentException>(() => second);
+            Assert.Equal(20, await db.ProjectInvitations.CountAsync());
+            Assert.Equal(20, await db.AuditEvents.CountAsync(e => e.Action == "invitation.created"));
+            Assert.Equal(0, await db.AuditEvents.CountAsync(e => e.Action == "invitation.renewed"));
+            Assert.Equal(existing!.Invitation.Id, (await owner.PreviewAsync(existing.Token!)).Id);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await using var drop = new Npgsql.NpgsqlCommand($"DROP SCHEMA {schema} CASCADE", connection); await drop.ExecuteNonQueryAsync();
+        }
+    }
+
+    private sealed class PauseQuotaContext(DbContextOptions<FeatureFlagDbContext> options, TaskCompletionSource reached,
+        TaskCompletionSource release) : FeatureFlagDbContext(options)
+    {
+        public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+        {
+            if (ChangeTracker.Entries<ProjectInvitation>().Any(e => e.State == EntityState.Added))
+            {
+                reached.TrySetResult();
+                await release.Task.WaitAsync(TimeSpan.FromSeconds(15), cancellationToken);
+            }
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+    }
+
+    [Fact]
     public async Task Unregistered_recipient_can_join_after_signup_with_one_atomic_audit_operation()
     {
         await using var f = await InvitationFixture.CreateAsync();
