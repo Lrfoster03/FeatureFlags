@@ -10,9 +10,11 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.EntityFrameworkCore
 @using FeatureFlags.Services
+@using Microsoft.Extensions.Options
 
 @inject IDbContextFactory<FeatureFlagDbContext> DbFactory
 @inject ProjectInvitations Invitations
+@inject ILogger<Settings> Logger
 @inject InvitationDelivery Delivery
 @inject ProjectChanges Changes
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -296,12 +298,33 @@
         catch (DbUpdateConcurrencyException)
         {
             errorMessage = "This item changed since you opened it. Review the refreshed information before trying again.";
-            await ReloadAsync();
+            await TryReloadAfterErrorAsync();
         }
-        catch (InvitationDeliveryException ex) { errorMessage = ex.Message; await ReloadAsync(); }
-        catch (ArgumentException ex) { errorMessage = ex.Message; await ReloadAsync(); }
+        catch (InvitationDeliveryException ex)
+        {
+            InvitationDiagnostics.LogUnexpected(Logger, "delivery", ex);
+            errorMessage = ex.Message;
+            await TryReloadAfterErrorAsync();
+        }
+        catch (OptionsValidationException ex)
+        {
+            InvitationDiagnostics.LogUnexpected(Logger, "email configuration", ex);
+            errorMessage = "Invitation email is not configured. Contact a project administrator.";
+        }
+        catch (ArgumentException ex) { errorMessage = ex.Message; await TryReloadAfterErrorAsync(); }
         catch (UnauthorizedAccessException ex) { errorMessage = ex.Message; }
-        catch (Exception) { errorMessage = "Failed to save changes. Please retry."; }
+        catch (Exception ex) { InvitationDiagnostics.LogUnexpected(Logger, "settings mutation", ex); errorMessage = "Failed to save changes. Please retry."; }
         finally { isSaving = false; }
     }
+
+    private async Task TryReloadAfterErrorAsync()
+    {
+        try { await ReloadAsync(); }
+        catch (Exception ex)
+        {
+            // Recovery must not replace the original error or escape the event handler.
+            InvitationDiagnostics.LogUnexpected(Logger, "settings recovery refresh", ex);
+        }
+    }
+
 }
