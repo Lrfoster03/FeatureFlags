@@ -214,3 +214,45 @@ arbitrary forwarded headers or configure all networks as trusted.
 Invitation pages and registration (including invitation previews on GET and POST)
 share a 30-request-per-minute bucket per client IP. Forwarded headers are processed
 before rate limiting, so clients behind the trusted Caddy proxy have separate buckets.
+## Project invitation email
+
+Invitations expire after seven days. Only an Admin or Owner can send or revoke
+one. Recipients must sign in with the invited email and explicitly join the
+project. Pending invitations do not grant access. Resend renews the link and
+invalidates the previous one; allow one minute between resends. Each project
+can issue up to 20 invitations/renewals per hour.
+
+Development writes `.eml` files to `src/featureflags/App_Data/invitation-mail/`.
+Open them in a mail client to follow the invitation. This folder is ignored by
+Git and is not publicly served. Set `InvitationEmail__PublicBaseUrl` to the
+local URL you actually use (including the port).
+
+For real SMTP delivery, configure these environment variables or user secrets:
+
+| Setting | Value |
+| --- | --- |
+| `InvitationEmail__PublicBaseUrl` | Public HTTPS application URL |
+| `InvitationEmail__From` | Verified sender address, optionally with display name |
+| `InvitationEmail__Host` | SMTP server hostname |
+| `InvitationEmail__Port` | Usually `587` or `465` |
+| `InvitationEmail__Security` | `StartTls` for required STARTTLS, or `SslOnConnect` |
+| `InvitationEmail__Username` | SMTP username, if authentication is required |
+| `InvitationEmail__Password` | SMTP password, supplied through secrets |
+
+Clear `InvitationEmail__PickupDirectory` when testing SMTP in Development.
+Production rejects pickup mode and requires TLS. Configure the sender/domain
+with your email provider. SMTP acceptance does not guarantee inbox delivery;
+provider bounces and spam filtering still apply.
+
+Mail settings are validated before creating or renewing an invitation; invalid
+configuration does not replace a link or consume quota. If the later delivery
+attempt fails, the saved invitation remains visible and can be resent. The
+application does not store raw invitation tokens, so resend always issues a
+new link. A renewed-link audit event records that change even if email delivery
+subsequently fails. Mail credentials and invitation links must not be committed
+or written to application logs.
+
+Invitation reads honor caller cancellation. Mutations honor it until commit begins;
+commit reconciliation and the bounded email delivery attempt finish after that
+point, so a disconnected caller does not turn a saved invitation into a cancelled
+operation. SMTP acceptance counts as success even if disconnect subsequently fails.
