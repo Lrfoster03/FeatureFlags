@@ -19,7 +19,8 @@ public class MutationArchitectureTests
             var text = File.ReadAllText(path);
             // Allow only the transaction lock statement; arbitrary SQL writes remain forbidden.
             if (path.EndsWith("ProjectMutation.cs"))
-                text = text.Replace("""db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockId})", cancellationToken)""", "");
+                text = text.Replace("""db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({lockId})", cancellationToken)""", "")
+                    .Replace("""Db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({1}, {projectLock})", cancellationToken)""", "");
             if (Regex.IsMatch(text, @"\.(ExecuteUpdate|ExecuteDelete|ExecuteSql\w*|ExecuteNonQuery)\s*(Async)?\s*\(")) violations.Add(path);
             if (!path.EndsWith("FeatureFlagDbContext.cs") && Regex.IsMatch(text, @"\.SaveChanges(Async)?\s*\(")) violations.Add(path);
             if (!path.EndsWith("ProjectMutation.cs") && Regex.IsMatch(text, @"\.SaveMutationAsync\s*\(")) violations.Add(path);

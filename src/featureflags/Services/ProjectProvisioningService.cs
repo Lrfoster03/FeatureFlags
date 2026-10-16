@@ -5,8 +5,8 @@ using Microsoft.AspNetCore.Components.Authorization;
 
 namespace FeatureFlags.Services;
 
-public sealed class ProjectProvisioningService(IDbContextFactory<FeatureFlagDbContext> dbFactory, AuthenticationStateProvider authentication)
-    : ProjectMutation(dbFactory, authentication), IProjectProvisioningService
+public sealed class ProjectProvisioningService(IDbContextFactory<FeatureFlagDbContext> dbFactory, AuthenticationStateProvider authentication, TimeProvider? clock = null)
+    : ProjectMutation(dbFactory, authentication, clock), IProjectProvisioningService
 {
     public async Task<Project> CreateProjectForUserAsync(
         ApplicationUser user,

@@ -9,7 +9,7 @@ namespace FeatureFlags.Services;
 public sealed class ProjectChanges(
     IDbContextFactory<FeatureFlagDbContext> dbFactory,
     IDbContextFactory<ApplicationDbContext> identityFactory,
-    AuthenticationStateProvider authentication) : ProjectMutation(dbFactory, authentication)
+    AuthenticationStateProvider authentication, TimeProvider? clock = null) : ProjectMutation(dbFactory, authentication, clock)
 {
     public Task<IReadOnlyList<AuditEvent>> AddItemAsync(string projectId, int environmentId, bool config, Guid operationId)
         => ExecuteAsync(projectId, operationId, ProjectRole.Editor, async context =>
